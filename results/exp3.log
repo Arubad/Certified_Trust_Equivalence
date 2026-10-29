@@ -1,0 +1,43 @@
+spurious 0.5 seed 0 done
+spurious 0.5 seed 1 done
+spurious 0.5 seed 2 done
+spurious 0.8 seed 0 done
+spurious 0.8 seed 1 done
+spurious 0.8 seed 2 done
+spurious 0.95 seed 0 done
+spurious 0.95 seed 1 done
+spurious 0.95 seed 2 done
+[saved] results/exp3_group_certificate.csv
+[saved] results/exp3_summary.csv
+    spurious     method certifier  unc_disagreement_A  unc_disagreement_B  coverage_A  coverage_B  risk_A  risk_B  viol_A  viol_B
+0       0.50  distill10  marginal               0.014               0.014       0.998       0.999   0.013   0.013   0.000   0.000
+1       0.50  distill10  mondrian               0.014               0.014       0.992       0.993   0.011   0.011   0.000   0.000
+2       0.50    prune90  marginal               0.016               0.014       0.998       0.998   0.014   0.014   0.000   0.000
+3       0.50    prune90  mondrian               0.016               0.014       0.992       0.992   0.012   0.011   0.000   0.000
+4       0.50    prune95  marginal               0.029               0.034       0.995       0.994   0.027   0.031   0.000   0.003
+5       0.50    prune95  mondrian               0.029               0.034       0.969       0.964   0.021   0.021   0.000   0.007
+6       0.50  pruneFT95  marginal               0.015               0.015       0.999       0.998   0.015   0.014   0.000   0.000
+7       0.50  pruneFT95  mondrian               0.015               0.015       0.991       0.992   0.012   0.011   0.000   0.000
+8       0.50    quant3b  marginal               0.009               0.007       0.999       0.998   0.008   0.006   0.000   0.000
+9       0.50    quant3b  mondrian               0.009               0.007       0.993       0.993   0.006   0.004   0.000   0.000
+10      0.80  distill10  marginal               0.009               0.010       0.999       0.999   0.008   0.009   0.000   0.000
+11      0.80  distill10  mondrian               0.009               0.010       0.993       0.993   0.006   0.007   0.000   0.000
+12      0.80    prune90  marginal               0.013               0.014       0.998       0.998   0.012   0.013   0.000   0.000
+13      0.80    prune90  mondrian               0.013               0.014       0.993       0.992   0.010   0.011   0.000   0.000
+14      0.80    prune95  marginal               0.039               0.055       0.975       0.955   0.030   0.035   0.000   0.167
+15      0.80    prune95  mondrian               0.039               0.055       0.947       0.916   0.024   0.022   0.007   0.023
+16      0.80  pruneFT95  marginal               0.008               0.007       0.999       0.999   0.008   0.007   0.000   0.000
+17      0.80  pruneFT95  mondrian               0.008               0.007       0.993       0.993   0.006   0.005   0.000   0.000
+18      0.80    quant3b  marginal               0.004               0.006       0.997       0.999   0.003   0.005   0.000   0.000
+19      0.80    quant3b  mondrian               0.004               0.006       0.993       0.993   0.002   0.004   0.000   0.000
+20      0.95  distill10  marginal               0.013               0.012       0.999       0.998   0.012   0.012   0.000   0.000
+21      0.95  distill10  mondrian               0.013               0.012       0.992       0.992   0.009   0.010   0.000   0.000
+22      0.95    prune90  marginal               0.015               0.016       0.998       0.998   0.014   0.016   0.000   0.000
+23      0.95    prune90  mondrian               0.015               0.016       0.991       0.990   0.011   0.013   0.000   0.000
+24      0.95    prune95  marginal               0.040               0.046       0.989       0.986   0.035   0.039   0.000   0.170
+25      0.95    prune95  mondrian               0.040               0.046       0.950       0.931   0.023   0.023   0.000   0.017
+26      0.95  pruneFT95  marginal               0.010               0.009       0.999       0.999   0.009   0.008   0.000   0.000
+27      0.95  pruneFT95  mondrian               0.010               0.009       0.992       0.993   0.008   0.007   0.000   0.000
+28      0.95    quant3b  marginal               0.005               0.008       0.999       0.997   0.005   0.007   0.000   0.000
+29      0.95    quant3b  mondrian               0.005               0.008       0.993       0.993   0.004   0.006   0.000   0.000
+done

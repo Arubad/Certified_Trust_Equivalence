@@ -1,0 +1,48 @@
+seed 0 prune90 done
+seed 0 pruneFT90 done
+seed 0 quant3b done
+seed 0 distill25 done
+seed 1 prune90 done
+seed 1 pruneFT90 done
+seed 1 quant3b done
+seed 1 distill25 done
+seed 2 prune90 done
+seed 2 pruneFT90 done
+seed 2 quant3b done
+seed 2 distill25 done
+[saved] results/exp5_streaming.csv
+[saved] results/exp5_summary.csv
+       method              policy  L_call_frac   cost  risk_on_served  risk_seg0  risk_seg1  risk_seg2  overall_disagreement  n_recal
+0   distill25            always-C        0.000  0.106           0.109      0.030      0.206      0.092                 0.109    0.000
+1   distill25            always-L        1.000  1.000           0.000      0.000      0.000      0.000                 0.000    0.000
+2   distill25        cert+audit10        0.263  0.350           0.063      0.029      0.157      0.017                 0.052    1.000
+3   distill25         cert+audit2        0.083  0.182           0.092      0.029      0.181      0.069                 0.087    0.333
+4   distill25         cert+audit5        0.173  0.265           0.076      0.029      0.168      0.041                 0.068    0.667
+5   distill25          cert+cusum        0.259  0.337           0.034      0.029      0.061      0.017                 0.026    1.167
+6   distill25       cert+periodic        0.411  0.473           0.028      0.027      0.023      0.031                 0.016    6.000
+7   distill25  static-certificate        0.015  0.119           0.102      0.029      0.192      0.086                 0.100    0.000
+8     prune90            always-C        0.000  0.106           0.428      0.296      0.588      0.400                 0.428    0.000
+9     prune90            always-L        1.000  1.000           0.000      0.000      0.000      0.000                 0.000    0.000
+10    prune90        cert+audit10        0.884  0.898           0.077      0.024      0.298      0.000                 0.015    0.750
+11    prune90         cert+audit2        0.829  0.847           0.128      0.027      0.310      0.008                 0.034    0.667
+12    prune90         cert+audit5        0.870  0.884           0.085      0.027      0.310      0.000                 0.018    0.667
+13    prune90          cert+cusum        0.880  0.892           0.051      0.027      0.290      0.011                 0.009    5.667
+14    prune90       cert+periodic        0.890  0.901           0.034      0.025      0.000      0.028                 0.004    6.000
+15    prune90  static-certificate        0.724  0.753           0.128      0.027      0.307      0.078                 0.052    0.000
+16  pruneFT90            always-C        0.000  0.106           0.140      0.051      0.266      0.104                 0.140    0.000
+17  pruneFT90            always-L        1.000  1.000           0.000      0.000      0.000      0.000                 0.000    0.000
+18  pruneFT90        cert+audit10        0.405  0.475           0.053      0.040      0.144      0.006                 0.035    1.000
+19  pruneFT90         cert+audit2        0.189  0.276           0.096      0.039      0.215      0.044                 0.082    0.667
+20  pruneFT90         cert+audit5        0.308  0.385           0.070      0.040      0.185      0.010                 0.052    1.000
+21  pruneFT90          cert+cusum        0.284  0.359           0.061      0.037      0.107      0.034                 0.052    1.250
+22  pruneFT90       cert+periodic        0.472  0.528           0.031      0.036      0.013      0.028                 0.016    6.000
+23  pruneFT90  static-certificate        0.059  0.158           0.114      0.040      0.230      0.081                 0.108    0.000
+24    quant3b            always-C        0.000  0.051           0.075      0.019      0.147      0.059                 0.075    0.000
+25    quant3b            always-L        1.000  1.000           0.000      0.000      0.000      0.000                 0.000    0.000
+26    quant3b        cert+audit10        0.164  0.212           0.061      0.017      0.139      0.033                 0.057    0.667
+27    quant3b         cert+audit2        0.051  0.101           0.067      0.017      0.139      0.047                 0.065    0.250
+28    quant3b         cert+audit5        0.092  0.141           0.066      0.017      0.141      0.042                 0.063    0.417
+29    quant3b          cert+cusum        0.203  0.244           0.027      0.017      0.057      0.017                 0.021    1.750
+30    quant3b       cert+periodic        0.343  0.377           0.028      0.017      0.034      0.038                 0.019    6.000
+31    quant3b  static-certificate        0.009  0.059           0.071      0.017      0.142      0.056                 0.071    0.000
+done

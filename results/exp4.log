@@ -1,0 +1,91 @@
+seed 0 prune90 done
+seed 0 pruneFT90 done
+seed 0 quant3b done
+seed 0 distill25 done
+seed 1 prune90 done
+seed 1 pruneFT90 done
+seed 1 quant3b done
+seed 1 distill25 done
+seed 2 prune90 done
+seed 2 pruneFT90 done
+seed 2 quant3b done
+seed 2 distill25 done
+[saved] results/exp4_drift_risk.csv
+[saved] results/exp4_monitors.csv
+[saved] results/exp4_risk_summary.csv
+[saved] results/exp4_monitor_summary.csv
+       method    drift  severity  risk_pre  risk_post  coverage_post  acc_T_post  acc_C_post
+0   distill25    noise      0.00     0.029      0.029          0.996       0.976       0.958
+1   distill25    noise      0.15     0.029      0.038          0.993       0.967       0.946
+2   distill25    noise      0.30     0.029      0.059          0.991       0.943       0.915
+3   distill25    noise      0.50     0.029      0.123          0.985       0.859       0.831
+4   distill25  occlude      0.00     0.029      0.029          0.996       0.976       0.958
+5   distill25  occlude      0.15     0.029      0.035          0.994       0.968       0.949
+6   distill25  occlude      0.30     0.029      0.035          0.994       0.968       0.949
+7   distill25  occlude      0.50     0.029      0.064          0.990       0.903       0.892
+8   distill25   rotate      0.00     0.029      0.029          0.996       0.976       0.958
+9   distill25   rotate      0.15     0.029      0.098          0.987       0.842       0.842
+10  distill25   rotate      0.30     0.029      0.195          0.973       0.658       0.703
+11  distill25   rotate      0.50     0.029      0.272          0.958       0.360       0.423
+12    prune90    noise      0.00     0.027      0.025          0.314       0.976       0.700
+13    prune90    noise      0.15     0.027      0.033          0.305       0.967       0.668
+14    prune90    noise      0.30     0.027      0.056          0.284       0.943       0.622
+15    prune90    noise      0.50     0.027      0.108          0.250       0.859       0.536
+16    prune90  occlude      0.00     0.027      0.025          0.314       0.976       0.700
+17    prune90  occlude      0.15     0.027      0.031          0.311       0.968       0.686
+18    prune90  occlude      0.30     0.027      0.031          0.311       0.968       0.686
+19    prune90  occlude      0.50     0.027      0.062          0.294       0.903       0.640
+20    prune90   rotate      0.00     0.027      0.025          0.314       0.976       0.700
+21    prune90   rotate      0.15     0.027      0.234          0.206       0.842       0.488
+22    prune90   rotate      0.30     0.027      0.310          0.243       0.658       0.358
+23    prune90   rotate      0.50     0.027      0.219          0.369       0.360       0.204
+24  pruneFT90    noise      0.00     0.039      0.036          0.972       0.976       0.942
+25  pruneFT90    noise      0.15     0.039      0.040          0.969       0.967       0.932
+26  pruneFT90    noise      0.30     0.039      0.061          0.961       0.943       0.901
+27  pruneFT90    noise      0.50     0.039      0.117          0.937       0.859       0.810
+28  pruneFT90  occlude      0.00     0.039      0.036          0.972       0.976       0.942
+29  pruneFT90  occlude      0.15     0.039      0.039          0.971       0.968       0.932
+30  pruneFT90  occlude      0.30     0.039      0.039          0.971       0.968       0.932
+31  pruneFT90  occlude      0.50     0.039      0.070          0.959       0.903       0.868
+32  pruneFT90   rotate      0.00     0.039      0.036          0.972       0.976       0.942
+33  pruneFT90   rotate      0.15     0.039      0.117          0.922       0.842       0.801
+34  pruneFT90   rotate      0.30     0.039      0.232          0.900       0.658       0.645
+35  pruneFT90   rotate      0.50     0.039      0.286          0.886       0.360       0.343
+36    quant3b    noise      0.00     0.017      0.015          0.996       0.976       0.970
+37    quant3b    noise      0.15     0.017      0.022          0.996       0.967       0.959
+38    quant3b    noise      0.30     0.017      0.038          0.995       0.943       0.926
+39    quant3b    noise      0.50     0.017      0.075          0.990       0.859       0.834
+40    quant3b  occlude      0.00     0.017      0.015          0.996       0.976       0.970
+41    quant3b  occlude      0.15     0.017      0.021          0.996       0.968       0.960
+42    quant3b  occlude      0.30     0.017      0.021          0.996       0.968       0.960
+43    quant3b  occlude      0.50     0.017      0.039          0.993       0.903       0.892
+44    quant3b   rotate      0.00     0.017      0.015          0.996       0.976       0.970
+45    quant3b   rotate      0.15     0.017      0.060          0.988       0.842       0.851
+46    quant3b   rotate      0.30     0.017      0.142          0.984       0.658       0.642
+47    quant3b   rotate      0.50     0.017      0.140          0.979       0.360       0.355
+    monitor  severity  false_alarm  detected  median_delay   audits
+0   audit10      0.00        0.033     0.000           NaN  246.683
+1   audit10      0.15        0.033     0.089         534.5  237.711
+2   audit10      0.30        0.033     0.261         562.0  225.050
+3   audit10      0.50        0.033     0.339         523.0  214.928
+4    audit2      0.00        0.017     0.000           NaN   50.617
+5    audit2      0.15        0.017     0.050         597.0   49.433
+6    audit2      0.30        0.017     0.089        1026.5   49.233
+7    audit2      0.50        0.017     0.172        1001.0   48.389
+8   audit20      0.00        0.017     0.000           NaN  495.733
+9   audit20      0.15        0.017     0.083         372.0  477.083
+10  audit20      0.30        0.017     0.278         479.0  450.006
+11  audit20      0.50        0.017     0.383         506.0  431.533
+12   audit5      0.00        0.017     0.000           NaN  121.617
+13   audit5      0.15        0.017     0.083         597.0  117.972
+14   audit5      0.30        0.017     0.233         628.5  113.267
+15   audit5      0.50        0.017     0.289         585.5  109.694
+16    cusum      0.00        0.417     0.100         935.0    0.000
+17    cusum      0.15        0.417     0.217         398.0    0.000
+18    cusum      0.30        0.417     0.272         256.0    0.000
+19    cusum      0.50        0.417     0.406         289.0    0.000
+20       ks      0.00        0.050     0.100         499.0    0.000
+21       ks      0.15        0.050     0.578          99.0    0.000
+22       ks      0.30        0.050     0.689          99.0    0.000
+23       ks      0.50        0.050     0.917          99.0    0.000
+done

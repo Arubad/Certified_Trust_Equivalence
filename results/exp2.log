@@ -1,0 +1,35 @@
+digits 0 done
+digits 1 done
+digits 2 done
+toxic 0 done
+toxic 1 done
+toxic 2 done
+[saved] results/exp2_certified_efficiency.csv
+[saved] results/exp2_summary.csv
+[saved] results/exp2_model_selection.csv
+      task  alpha                       rule          pick  size_ratio  acc_gap  agreement  coverage  certified_cost
+0   digits   0.01  min size | acc within 1pt     quant-3.0       0.051    0.009      0.982     0.860           0.184
+1   digits   0.01              max agreement     quant-8.0       0.230    0.003      0.999     0.999           0.231
+2   digits   0.01         min certified cost     quant-4.0       0.093    0.006      0.993     0.991           0.101
+3   digits   0.02  min size | acc within 1pt     quant-3.0       0.051    0.009      0.982     0.969           0.081
+4   digits   0.02              max agreement     quant-8.0       0.230    0.003      0.999     0.999           0.231
+5   digits   0.02         min certified cost     quant-3.0       0.051    0.009      0.982     0.969           0.081
+6   digits   0.05  min size | acc within 1pt     quant-3.0       0.051    0.009      0.982     0.996           0.055
+7   digits   0.05              max agreement     quant-8.0       0.230    0.003      0.999     0.999           0.231
+8   digits   0.05         min certified cost     quant-3.0       0.051    0.009      0.982     0.996           0.055
+9   digits   0.10  min size | acc within 1pt     quant-3.0       0.051    0.009      0.982     0.996           0.055
+10  digits   0.10              max agreement     quant-8.0       0.230    0.003      0.999     0.999           0.231
+11  digits   0.10         min certified cost  distill-32.0       0.041    0.071      0.910     0.995           0.046
+12   toxic   0.01  min size | acc within 1pt   distill-8.0       0.008    0.000      0.989     0.982           0.026
+13   toxic   0.01              max agreement     quant-8.0       0.227    0.000      1.000     0.998           0.229
+14   toxic   0.01         min certified cost   distill-8.0       0.008    0.000      0.989     0.982           0.026
+15   toxic   0.02  min size | acc within 1pt   distill-8.0       0.008    0.000      0.989     0.992           0.016
+16   toxic   0.02              max agreement     quant-8.0       0.227    0.000      1.000     0.998           0.229
+17   toxic   0.02         min certified cost   distill-8.0       0.008    0.000      0.989     0.992           0.016
+18   toxic   0.05  min size | acc within 1pt   distill-8.0       0.008    0.000      0.989     0.998           0.009
+19   toxic   0.05              max agreement     quant-8.0       0.227    0.000      1.000     0.998           0.229
+20   toxic   0.05         min certified cost   distill-8.0       0.008    0.000      0.989     0.998           0.009
+21   toxic   0.10  min size | acc within 1pt   distill-8.0       0.008    0.000      0.989     0.998           0.009
+22   toxic   0.10              max agreement     quant-8.0       0.227    0.000      1.000     0.998           0.229
+23   toxic   0.10         min certified cost   distill-8.0       0.008    0.000      0.989     0.998           0.009
+done
