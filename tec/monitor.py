@@ -181,7 +181,7 @@ class AdaptiveAuditMartingale:
 def expected_audit_delay(r, alpha, delta, budget, coverage=1.0, qs=None):
     """Expected detection delay D(r) of ShadowAuditMartingale (Prop. 2, docs/theory.md).
 
-    Number of served inputs until the alarm, for a post-change disagreement
+    Number of stream inputs (served and deferred) until the alarm, for a post-change disagreement
     rate r and audit probability ``budget`` (b) with coverage c:
 
         D(r) = (log(1/delta) + log|Q|) / (b * c * max_q KL_q(r)),

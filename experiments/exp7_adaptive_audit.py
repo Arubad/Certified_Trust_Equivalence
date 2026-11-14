@@ -208,7 +208,7 @@ def plot(summ):
         g = summ[(summ.monitor == m) & summ.median_delay.notna()]
         ax.scatter(g.null_audits_per_stream, g.median_delay, color=colors[m], label=m, alpha=0.7, s=28)
     ax.set_xscale("log"); ax.set_yscale("log")
-    ax.set_xlabel("in-control audits per null stream (3000 served inputs)")
+    ax.set_xlabel("in-control audits per null stream (3000-input null stream)")
     ax.set_ylabel("median detection delay (steps)")
     ax.set_title("in-control audit cost vs delay (each point = setting x model)")
     ax.legend(fontsize=8)

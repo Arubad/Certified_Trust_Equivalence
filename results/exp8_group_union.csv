@@ -1,4 +1,4 @@
-model,certificate,delta_label,delta,n_groups,n_splits,eval,simultaneous_violation,union_bound
+model,certificate,delta_label,delta,n_groups,n_splits,eval,simultaneous_violation,sidak_bound
 int8,marginal,delta,0.1,6,300,population,1.0,0.46855899999999995
 int8,marginal,delta/G,0.016666666666666666,6,300,population,0.9966666666666667,0.09592477621313467
 int8,group,delta,0.1,6,300,population,0.19666666666666666,0.46855899999999995

@@ -15,17 +15,17 @@ docstrings). The verdict is against the CSVs.
 | # | Hypothesis (short form) | Key evidence | Verdict |
 |---|---|---|---|
 | H1 | The LTT certificate keeps P(risk > α) ≤ δ with finite samples; the naive threshold does not | synthetic: max violation 0.095 over 49 settings; naive 0.16–0.50 on pruned models | **Supported** |
-| H2 | Certified cost picks different compressions than accuracy, and is non-monotone in compression | prune 70→80→90 %: cost 0.40→0.63→1.00 at α = 0.01; the rules disagree at 2 of 4 α | **Supported** |
+| H2 | Certified cost picks different compressions than accuracy, and is non-monotone in compression | prune 50→70→80 %: cost 0.509→0.403→0.632 at α = 0.01; the rules disagree at 2 of 4 α | **Supported** |
 | H3 | A marginal certificate fails on the group that compression hurts; a Mondrian one fixes it | group-B violation 0.167 → 0.023 (synthetic) | **Supported** |
 | H4 | Drift voids the certificate; the audit martingale detects it within a few hundred inputs at 5 % budget; label-free monitors fail | rotation raises risk 3–9× over pre-drift; audit selective, but 5 % median delay 629 | **Mixed** |
 | H5 | A monitored, recalibrating deployment restores the guarantee after drift at a fraction of L's cost | segment-3 risk back to ≤ α, but not during the detection window | **Mixed** |
-| H6a | On a real BERT and real compressions the certificate is valid, and it is the only way to serve the "same-accuracy" model safely | max violation 0.090 ≤ δ (naive 0.45–0.55); int8 has the same accuracy as L but disagrees on 8.3 % of inputs | **Supported** |
+| H6a | On a real BERT and real compressions the certificate is valid, and it is a way to serve the "same-accuracy" model safely | max violation 0.090 ≤ δ (naive 0.45–0.55); int8 is within 0.001 of L's accuracy but disagrees on 8.3 % of inputs | **Supported** (empirically; not covered by a proof in population mode) |
 | H6b | On real data the marginal certificate fails on identity groups; the group certificate repairs it | Homosexual-group violation 1.000 → 0.013 (int8) | **Supported (stronger than synthetic)** |
 | H6c | A real cross-platform shift voids the certificate, and the audit martingale detects it | risk 0.040 → 0.059 (int8) / 0.107 (q4); audit detection 0–0.18 | **Mixed**: the certificate is voided, detection mostly fails |
 | H6d | Auditing plus recalibration keeps a real streaming deployment within α at < 100 % of L's cost | q4 + 20 % audits: last-1 000 risk 0.044 at cost 0.606; int8 static already 0.056 | **Mixed** |
-| H7 | A predictable KS-triggered audit rate gets the high-budget delay at the low-budget in-control cost, with false alarm ≤ δ | delay shorter than fixed 20 % on every harmful-drift cell; in-control audits 1.00–1.21× fixed 2 % (after a KS-reference bug fix); 3–5× on harmless shifts | **Supported (qualified)** |
+| H7 | A predictable KS-triggered audit rate gets the high-budget delay at the low-budget in-control cost, with false alarm ≤ δ | delay shorter than fixed 20 % on every harmful-drift cell; in-control audits 1.00–1.21× fixed 2 % (after a KS-reference bug fix); on noise shifts 3.2–4.8× (occlusion 1.19–1.36×), on the real blind-zone shift about 5× | **Supported (qualified)** |
 | H8a | Prop 2's delay formula D(r) predicts the simulated delay to within [0.7, 1.6] | ratio 0.856–1.058 over 20 (r, b) cells | **Supported** |
-| H8c | Per-group δ gives simultaneous failure ≤ 1−(1−δ)^G; δ/G gives ≤ δ | 0.12–0.197 ≤ 0.469; 0.000–0.027 ≤ 0.10 | **Supported** |
+| H8c | Per-group δ gives simultaneous failure ≤ 1−(1−δ)^G (Šidák bound); δ/G gives ≤ δ | 0.02–0.197 (0.12–0.197 for int8/q4/p30) ≤ 0.469; 0.000–0.027 ≤ 0.10 | **Supported** |
 | T1c | No λ can be certified below n = ⌈log δ / log(1−α)⌉ (230 at α = 0.01) | n_cal = 200, α = 0.01: feasible = 0.00 for all six real models | **Supported** |
 
 ---
@@ -76,12 +76,12 @@ accuracy–cost; we optimise cost subject to a trust guarantee.
    classifier, six training-free compressions:** max violation 0.090 over every cell, against
    0.45–0.55 for the naive threshold (`results/real/exp6a_summary.csv`).
 2. **The same-accuracy, silent-flip phenomenon on a real transformer, and a certificate that
-   handles it.** Dynamic int8 quantisation has L's accuracy (0.678 vs 0.679) but disagrees with L
+   handles it.** Dynamic int8 quantisation is within 0.001 of L's accuracy (0.678 vs 0.679) but disagrees with L
    on 8.3 % of in-domain posts. No marginal bound can certify α = 0.05 for it (Clopper–Pearson bound
    0.095), yet the selective certificate serves 86 % of inputs at population risk 0.040, at
    certified cost 0.496 (size) or 0.633 (measured CPU latency).
 3. **Certified cost as a model-selection criterion.** It is non-monotone in compression ratio
-   (synthetic: prune 70 → 80 → 90 % costs 0.40 → 0.63 → 1.00 at α = 0.01). On the real models the
+   (synthetic: prune 50 → 70 → 80 % costs 0.509 → 0.403 → 0.632 at α = 0.01). On the real models the
    certificate serves under 15 % of inputs, or nothing, for three of six compressions (q3, p50, p70),
    two of which (q3, p70) a size-only view would rank among the smallest.
 4. **Group-conditional certificates expose and fix a real fairness gap.** On HateXplain, the
@@ -99,7 +99,8 @@ accuracy–cost; we optimise cost subject to a trust guarantee.
    0.86–1.06 of simulation, and the group union bound holds on the real models. **Predictable
    adaptive auditing** (Exp 7) is provably valid (Proposition 4). It detects harmful drift faster than
    every fixed budget, including 20 % (rotation: median delay 199.5–386 vs 305–1 246), at 1.00–1.21× the
-   in-control audit cost of a fixed 2 % budget. Its remaining cost is extra audits on harmless score shifts.
+   in-control audit cost of a fixed 2 % budget, in a protocol with 1 500 in-control inputs before the change. Its
+   remaining cost is extra audits on score shifts that do not matter.
 
 ## 3. Method
 
@@ -159,9 +160,12 @@ on **every** input, because C must run to produce the margin, and it can exceed 
 replacement* from the 3 846-post pool, and risk and coverage are computed exactly on the whole pool,
 which is treated as the population. The guarantee is then exact for the empirical distribution and has
 no test-set noise. This replaced an earlier held-out evaluation after review found that small
-per-group test sets inflated violation rates. Caveat: bootstrap draws create tied scores, which
-is formally outside Theorem 1(b)'s continuity assumption (C) (the pool itself has 3 842–3 846
-distinct margins per model). Exp 6c, 6d and 7b use held-out splits instead.
+per-group test sets inflated violation rates. Caveat: the code uses the same-data quantile grid, which only
+Theorem 1(b) covers, and only under (C) and (M). Population mode satisfies neither. Bootstrap draws create tied scores, so (C)
+fails: about 12 % of the 1 000 draws are repeats (derived: 1 − 3 846·(1 − (1 − 1/3 846)<sup>1000</sup>)/1 000), even though
+the pool itself has 3 842–3 846 distinct margins per model. And the pool's empirical η(s) is jagged rather than monotone (a
+few upticks among the high-margin bins), so (M) is not guaranteed either. The population-mode validity results are therefore
+**empirical**; no proof covers them. Exp 6c, 6d and 7b use held-out splits instead.
 
 ### 3.1 Theory (summary of `docs/theory.md`)
 
@@ -264,7 +268,7 @@ than a milder one. Quantisation dominates the certified frontier.
 **Explanation.** Certified cost is a product of two terms that move in opposite directions. Compressing
 harder lowers size, but it also lowers the coverage the certificate allows, and every deferred input
 costs a full L call. Past a knee, coverage falls faster than size, so within every family the cost is
-non-monotone (prune 70 → 80 → 90 %: 0.40 → 0.63 → 1.00 at α = 0.01). Quantisation dominates because its
+non-monotone (prune 50 → 70 → 80 %: 0.509 → 0.403 → 0.632 at α = 0.01, and 90 % reaches 1.00). Quantisation dominates because its
 few disagreements sit at low margin, where a small deferral removes them. Distillation's disagreements are
 spread across margins. At loose α the certificate routes a 7-point-worse student's disagreements to L,
 which makes that student the cheapest.
@@ -335,6 +339,8 @@ Monitor performance, pooled over models and drift kinds (delay in inputs after t
 | audit 20 % | 450 | 0.017 | 0.08 / 0.28 / 0.38 | 479 |
 | CUSUM (label-free) | 0 | **0.417** | 0.22 / 0.27 / 0.41 | 256 |
 | KS (label-free) | 0 | 0.050 | 0.58 / 0.69 / 0.92 | 99 |
+
+*Median delays are conditional on detection and can rest on very few runs.* Exp 4 pools over models and drift kinds, so low detection rates mean a median over few streams.
 
 At severity 0.30, broken down by drift kind: audit 10 % detects rotate **0.78**, noise 0.00, occlude 0.00;
 KS detects rotate 0.95, noise **0.93**, occlude 0.18.
@@ -416,7 +422,7 @@ All Exp 6 numbers come from `results/real/`. δ = 0.10 throughout.
 | p70 | 0.457 | — | 0.423 | 0.439 | 0.561 | 0.203 | 0.509 |
 
 L's in-domain accuracy (0.679) is in line with the published HateXplain BERT baseline, so this is a
-representative model, not a broken one. **int8 has L's accuracy to three decimals and disagrees with it on
+representative model, not a broken one. **int8 is within 0.001 of L's accuracy and disagrees with it on
 8.3 % of posts**, and q4 is even slightly *more* accurate than L (0.684) while disagreeing on 4.9 %. This is the
 Rai & Awekar phenomenon on a real transformer: accuracy parity hides prediction flips that roughly cancel in the
 aggregate. The flips are mostly low-margin. With the α = 0.05 certificate (6a), int8 defers 13.9 % of posts and its
@@ -463,8 +469,10 @@ Over all 54 certified cells (6 models × 3 α × 3 n), the maximum violation is 
 At α = 0.01 and n = 200 every model has feasible = 0.00, exactly as Theorem 1(c) requires
 (⌈log 0.1 / log 0.99⌉ = 230 > 200).
 
-**Explanation.** The certificate is *valid* because the binomial test is exact for the disagreement indicator
-and the pool is the population, so the only randomness is the calibration draw the theorem accounts for.
+**Explanation.** The certificate is *empirically* valid. Each binomial test is exact for the disagreement indicator, and
+the pool is the population, so the only randomness is the calibration draw. But the implemented same-data quantile grid is
+covered by Theorem 1(b) only under (C) and (M), and population mode breaks (C) (bootstrap ties) and does not guarantee (M)
+(jagged empirical η) (§3). So no proof covers these numbers; they are an empirical check.
 The naive rule fails about half the time (0.45–0.55 wherever its threshold binds) for a simple reason: it stops where
 the empirical risk equals α, and in population mode the true risk at that point is above α about as often as below.
 In effect it is a median-unbiased estimate of the boundary. The one exception explains itself: q4 at α = 0.05 has
@@ -476,8 +484,9 @@ under 15 %, and their certified cost is 0.95–1.00, which is no better than run
 cost is 0.496. The cascade column shows that free deferral flatters every model by its size times the deferral
 rate.
 
-**Verdict: Supported.** One caveat: ties from bootstrap draws put this setting formally outside Theorem 1(b)'s
-assumption (C). The observed rates are nonetheless all ≤ δ.
+**Verdict: Supported empirically.** The observed rates are all ≤ δ. No proof covers population mode: bootstrap ties
+violate (C), and the jagged empirical η means (M) is not guaranteed. The assumption-free variant (Theorem 1(a), held-out
+grid) is what would make this a theorem.
 
 #### 6b — Group-conditional certificate on real identity groups
 
@@ -570,6 +579,8 @@ post-risk = served risk on the Davidson half):
 | p50 (20 runs) | audit 2 / 5 / 10 % | 0.00 / 0.00 / 0.00 | 0.05 / 0.15 / 0.15 | 0.00 / 0.05 / 0.05 | 171 / 889 / 643 | 0.078 |
 | q3 (13 runs) | KS / CUSUM | 0.00 / 0.62 | 1.00 / 0.00 | 0.00 / 0.31 | 299 / — | 0.029 |
 
+*Median delays are conditional on detection and can rest on very few runs.* A detection rate of 0.02 is 1 of 50 runs, so int8's audit 2 % / 5 % delays (123 / 127) each come from a single run.
+
 **Explanation.** *The certificate is voided, unevenly.* Davidson tweets come from a different platform and were labelled under a
 different annotation scheme, so L itself drops to 0.616 accuracy there. On those tweets int8 and p30 rise only to about 1.2× α
 (0.059), whereas q4, the in-domain winner, rises to 2.1× α (0.107), and at α = 0.02 to 3.6× α. The unconditional
@@ -629,15 +640,17 @@ recalibrations (0.40 → 0.70 → 1.05 per run). Once recalibrated on Davidson i
 Only the 20 % budget recalibrates early enough to bring the last 1 000 inputs to ≤ α (0.044), at cost 0.606 against 0.338
 for static. For int8 and p30 the audits are close to pure overhead: the excess risk is inside the blind zone, so
 the martingale almost never fires (≤ 0.10 recalibrations per run), and every audit policy costs more for the same risk.
-The most useful comparison runs *across* models. **Static int8 (cost 0.512, shifted risk 0.057) beats q4 with 20 %
-audits (cost 0.606, shifted risk 0.084)**, even though q4 was cheaper and certified at higher coverage in-domain (6a). For degenerate
+The comparison across models has two sides. Static int8 is cheaper (cost 0.512 vs 0.606) and has lower mean risk over
+the whole shifted segment (0.057 vs 0.084) than q4 with 20 % audits, even though q4 was cheaper and certified at higher
+coverage in-domain (6a). But static int8 never gets back within α (last-1 000 risk 0.056), whereas q4 + 20 % audits
+does (0.044). For degenerate
 models the policy layer correctly falls back to L (cost 0.98–1.00), and charging C on every input makes them strictly worse
 than L (cascade 1.27–1.56).
 
 **Verdict: Mixed.** For a detectable shift (q4), monitoring restores the guarantee at 0.61 of L's cost. For
 sub-threshold shifts (int8, p30) the guarantee is missed by about 0.006–0.013 risk and auditing does not help.
-**Robustness to shift reverses the in-domain ranking of compressions.** That is a model-selection result no in-domain
-evaluation would reveal.
+Robustness to shift therefore **complicates** the in-domain ranking of compressions: which model is "best" depends on
+whether one values cost and average risk or end-of-stream validity. No in-domain evaluation would reveal this.
 
 ![](results/real/exp6_real_models.png)
 
@@ -684,6 +697,8 @@ Real HateXplain → Davidson:
 | p50 (8 runs) | 0.12 / 527 / 9.5 / 0.00 | 0.25 / 979 / 19.6 / 0.00 | 0.12 / 508 / 41.1 / 0.00 | 0.12 / 433 / 86.4 / 0.00 | 0.12 / 527 / 9.8 / 0.00 |
 | q3 (5 runs) | 0.00 / — / 5.8 / 0.00 | 0.00 / — / 10.6 / 0.20 | 0.00 / — / 27.2 / 0.00 | 0.00 / — / 56.4 / 0.00 | 0.00 / — / 5.8 / 0.00 |
 
+*Median delays are conditional on detection and can rest on very few runs.* On digits, 0.07 is 1 of 15 runs: for example, quant3b's fixed-2 % delay (1 355) and prune90's noise-stream delays are single runs. On real data, 0.05 is 1 of 20 runs.
+
 **Explanation.** (i) *Validity holds.* The adaptive false-alarm rate is ≤ δ in every cell: 0.00–0.07 on digits and
 0.00–0.10 on real data. Where it is non-zero (prune90 0.07, int8 0.10, p30 0.05), it equals the fixed-2 % rate on the same
 runs. The adaptive monitor runs at 2 % in-control, so it inherits that monitor's alarms, and these are coarse counts
@@ -692,10 +707,11 @@ and q3 at 5 % over only 5 runs). With 20 runs the standard error is about 0.07. 
 in-domain alarm probability is bounded by δ<sub>cert</sub> + δ, not by δ, because when the certificate itself has failed
 (≤ 0.12 held-out violation in 6c), an alarm is a true detection.
 
-(ii) *Faster than every fixed budget on harmful drift, including 20 %.* The adaptive monitor has the shortest median
+(ii) *Faster than the fixed budgets on harmful drift here, including 20 %.* The adaptive monitor has the shortest median
 delay in every rotate cell (199.5–386, against 305–1 246 for fixed 20 %) and detection at least as high. On the one real
-model whose shift is detectable, q4, it detects 0.65 at a delay of 524, against 0.20 at 1 022.5 for fixed 20 %. A monitor that never
-audits more than 20 % beats one that always does because of the pre-change period. log M has no floor, so under
+model whose shift is detectable, q4, it detects 0.65 at a delay of 524, against 0.20 at 1 022.5 for fixed 20 %. It beats
+fixed 20 % *here* because that baseline's unfloored log M drifts down over the 1 500 pre-change inputs, so the margin
+depends on the in-control length. With a short in-control period, fixed 20 % would be at least as fast. log M has no floor, so under
 H<sub>0</sub> every audit pushes it further negative. A fixed 20 % monitor makes about ten times as many audits as a 2 %
 one during the 1 500 clean inputs, so it digs a deeper hole before the change. The adaptive monitor reaches the change
 point with log M near 0 and only then switches to 20 %. The same mechanism makes observed delays exceed Prop 2's D(r)
@@ -706,13 +722,17 @@ models (e.g. prune90 22.6 vs 18.7, int8 53.5 vs 47.7, quant3b 73.9 vs 63.1, dist
 residual 10–20 % comes from chance KS rejections. A level-0.01 test is recomputed every 10 served steps, so over a 3 000-input
 stream a few spurious triggers are expected, each switching to the 20 % rate briefly. The cost that remains is the
 *harmless*-shift cost. KS reacts to any change in the score distribution, so on the noise streams the adaptive monitor
-spends 3–5× the audits of fixed 2 % even though there is little to detect. This is the label-free trigger's known weakness
-(Exp 4, 6c), and here it costs audits, not false alarms.
+spends 3.2–4.8× the audits of fixed 2 % even though there is little to detect (occlusion: 1.19–1.36×). This is the label-free
+trigger's known weakness (Exp 4, 6c), and here it costs audits, not false alarms. The same happens on the real blind-zone shift.
+On the drifted stream the adaptive monitor spends 254.85 audits for int8 (fixed 2 %: 50.55) and 255.35 for p30 (55.10), about 5×,
+and buys a detection rate of 0.10, which equals its false-alarm rate for int8 (0.10) and is barely above it for p30 (0.05).
 
-**Verdict: Supported, with one qualification.** (i) holds. (ii) holds and is exceeded. (iii) holds in-control
-(1.00–1.21× fixed 2 %). On harmful drift the adaptive monitor therefore dominates fixed 5–20 % on both in-control cost and
-delay. Against fixed 2 % it pays 1.00–1.21× the in-control audits for a 3.4–5.3× shorter delay and higher detection. The qualification:
-on harmless score shifts it spends 3–5× the audits of fixed 2 %. This verdict replaces the "Mixed" verdict of the earlier
+**Verdict: Supported, with qualifications.** (i) holds. (ii) holds in this protocol. It beats fixed 20 % on delay, but that
+margin comes from the 1 500-input pre-change period. (iii) holds in-control (1.00–1.21× fixed 2 %). On harmful drift the
+adaptive monitor dominates fixed 5–20 % on both in-control cost and delay. Against fixed 2 % it pays 1.00–1.21× the
+in-control audits for a 3.4–5.3× shorter delay and higher detection. The qualifications: on score shifts that do not matter,
+it spends 3.2–4.8× the audits of fixed 2 % (noise; occlusion 1.19–1.36×). On the real blind-zone shift (int8, p30) it spends
+about 5× for a detection rate no better than its false-alarm rate. This verdict replaces the "Mixed" verdict of the earlier
 draft, which was an artefact of the KS-reference bug.
 
 ![](results/exp7_adaptive.png)
@@ -773,10 +793,10 @@ chance.
 | p50 | 0.377 | 0.147 | 0.160 | 0.017 |
 | q3 | 0.333 | 0.020 | 0.087 | 0.000 |
 | p70 | 0.000 | 0.000 | 0.000 | 0.000 |
-| bound | — | 0.469 | — | 0.096 |
+| Šidák bound (`sidak_bound`) | — | 0.469 | — | 0.096 |
 
-**Explanation.** With per-group δ the simultaneous failure rate (0.12–0.197) exceeds δ, as the corollary warns, but
-stays far under the product bound 0.469. Most groups sit well below α at their own λ<sub>g</sub>, so only one or two groups
+**Explanation.** With per-group δ the simultaneous failure rate (0.02–0.197; 0.12–0.197 for int8/q4/p30) exceeds δ for the usable models, as the corollary warns, but
+stays far under the Šidák (product) bound 0.469. Most groups sit well below α at their own λ<sub>g</sub>, so only one or two groups
 can realistically fail, and the bound's worst case (every group at the boundary) does not occur. Bonferroni at δ/6
 brings it to ≤ 0.027, which is ≤ δ. The marginal column is the instructive contrast. Tightening δ by 6× changes nothing for
 int8, q4 and p30 (0.997–1.000), because their failing groups are biased at *any* marginal λ the test would accept. No choice of
@@ -794,7 +814,9 @@ confidence level can repair a certificate that conditions on the wrong populatio
   dedicated kernels. Free-deferral cost flatters every model; the cascade cost is the conservative figure.
 * **Population mode certifies the pool, not the world.** 6a/6b/8c are exact for the empirical distribution of 3 846
   posts. Generalisation from that pool to new HateXplain-like posts is exactly the held-out setting (6c in-domain column),
-  where finite-test noise shows up as violation 0.08–0.12 over 50 splits. Bootstrap ties fall outside assumption (C).
+  where finite-test noise shows up as violation 0.08–0.12 over 50 splits. Population mode is also outside Theorem 1(b):
+  bootstrap ties (about 12 % repeats at n = 1 000) violate (C), and the pool's jagged empirical η means (M) is not guaranteed.
+  Its validity results are empirical.
 * **Theorem 1 covers the implemented grid only under (C) + (M).** The assumption-free fix (held-out or lattice grid,
   held-out start index; §3.1) is specified but not implemented.
 * **Blind zone of the audit martingale.** With alternatives {2α, 4α}, risks in (α, 0.072] are never detected in
@@ -803,8 +825,9 @@ confidence level can repair a certificate that conditions on the wrong populatio
   delay for large excesses.
 * **Pre-change drift of log M.** There is no floor, so delays measured from a change after a long in-control period exceed
   D(r) (Exp 4/5/7). A floored statistic is CUSUM-like and loses Ville's anytime guarantee. The trade-off is unexplored.
-* **Adaptive auditing reacts to harmless shifts.** Its KS trigger cannot tell a harmful score shift from a harmless one,
-  so on harmless drift it spends 3–5× the audits of a fixed 2 % budget (Exp 7). (An earlier version also over-triggered
+* **Adaptive auditing reacts to harmless shifts.** Its KS trigger cannot tell a harmful score shift from a harmless one.
+  On noise drift it spends 3.2–4.8× the audits of a fixed 2 % budget (occlusion 1.19–1.36×), and on the real blind-zone
+  shift about 5× for no useful detection (Exp 7). Its delay advantage over fixed 20 % depends on the in-control length. (An earlier version also over-triggered
   in-control because it compared served scores with *all* calibration scores. That is fixed and tested; see Exp 7.)
 * **Degenerate certificates and subsets of runs.** q3, p70 and (in about half the draws) p50 are infeasible or serve under 5 %. Their
   monitor rows are skipped per run, so p50/q3 monitor numbers in 6c and 7b average over 20/50, 13/50, 8/20 and 5/20 runs,
@@ -830,7 +853,7 @@ confidence level can repair a certificate that conditions on the wrong populatio
    score shifts, an alternative set or betting confidence sequence without a blind zone, and a principled treatment of
    pre-change drift.
 4. **Temporal drift on real data — open.** It needs a timestamped hate-speech corpus (train and calibrate on 2017, stream
-   2019–2024). Exp 6c's HateXplain → Davidson shift is a stand-in. Its lesson, that robustness to shift can reverse the
+   2019–2024). Exp 6c's HateXplain → Davidson shift is a stand-in. Its lesson, that robustness to shift complicates the
    in-domain ranking of compressions (6d), is what the temporal study should test at scale.
 5. **Deliverable — open.** A `trustcert` library (certify, audit, recalibrate) plus an evaluation protocol: *report
    certified coverage at (α, δ), per group, not agreement*. Packaging should wait until items 1 and 3 settle.

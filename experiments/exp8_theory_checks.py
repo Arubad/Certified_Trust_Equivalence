@@ -123,7 +123,7 @@ def part_c():
             rows.append({"model": c, "certificate": cert, "delta_label": dn, "delta": dl,
                          "n_groups": n_groups, "n_splits": n_split, "eval": "population",
                          "simultaneous_violation": k / n_split,
-                         "union_bound": 1 - (1 - dl) ** n_groups})
+                         "sidak_bound": 1 - (1 - dl) ** n_groups})
         print(c, {f"{cert}/{dn}": round(k / n_split, 3) for (cert, dn), k in viol.items()})
     df = pd.DataFrame(rows)
     df.to_csv(os.path.join(RES, "exp8_group_union.csv"), index=False)

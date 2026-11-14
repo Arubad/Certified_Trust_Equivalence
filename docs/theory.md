@@ -249,7 +249,7 @@ $\le 1.19$ at $\delta = .05$ and $\le 1.23$ at $\delta = .1$. The bracket is the
 roughly $[0.77, 1.46]$ (heuristic at the low end), and $[0.7, 1.6]$ adds Monte-Carlo slack.
 
 *Scope.* $D$ assumes the monitor starts at the change point. In exp4 and exp5, the monitor
-runs before the change, and $\log M$ drifts negative (towards its floor) during that time.
+runs before the change, and $\log M$ drifts negative during that time (there is no floor).
 So the delays measured from the change exceed $D$; $D$ is not a prediction for those
 experiments.
 
