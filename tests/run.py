@@ -21,9 +21,16 @@ def main():
     total = failed = 0
     for path in sorted(glob.glob(os.path.join(HERE, "test_*.py"))):
         name = os.path.splitext(os.path.basename(path))[0]
-        spec = importlib.util.spec_from_file_location(name, path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+        except Exception as exc:  # noqa: BLE001
+            total += 1
+            failed += 1
+            print(f"FAIL import {name}: {type(exc).__name__}: {exc}")
+            traceback.print_exc()
+            continue
         for fn_name in sorted(dir(mod)):
             fn = getattr(mod, fn_name)
             if not fn_name.startswith("test_") or not callable(fn):

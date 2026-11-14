@@ -107,19 +107,21 @@ def part_c():
         s, d, g = s_all[idx], d_all[idx], G[idx]
         viol = {(cert, dn): 0 for cert in ("marginal", "group") for dn in deltas}
         rng = np.random.default_rng(1)
+        # eval="population": i.i.d. draws with replacement from the pool; risks are exact over
+        # the whole pool (no held-out test noise), so the union-bound check is not confounded.
         for _ in range(n_split):
-            perm = rng.permutation(len(s)); ca, te = perm[:n_cal], perm[n_cal:]
+            ca = rng.integers(0, len(s), n_cal)
             for dn, dl in deltas.items():
                 marg = SelectiveCertificate(ALPHA, dl).fit(s[ca], d[ca])
                 grp = GroupCertificate(ALPHA, dl).fit(s[ca], d[ca], g[ca])
-                for cert, sm in (("marginal", marg.serve_mask(s[te])), ("group", grp.serve_mask(s[te], g[te]))):
-                    any_viol = any(selective_risk(sm[g[te] == gi], d[te][g[te] == gi]) > ALPHA
-                                   for gi in range(n_groups) if (g[te] == gi).any())
+                for cert, sm in (("marginal", marg.serve_mask(s)), ("group", grp.serve_mask(s, g))):
+                    any_viol = any(selective_risk(sm[g == gi], d[g == gi]) > ALPHA
+                                   for gi in range(n_groups) if (g == gi).any())
                     viol[(cert, dn)] += int(any_viol)
         for (cert, dn), k in viol.items():
             dl = deltas[dn]
             rows.append({"model": c, "certificate": cert, "delta_label": dn, "delta": dl,
-                         "n_groups": n_groups, "n_splits": n_split,
+                         "n_groups": n_groups, "n_splits": n_split, "eval": "population",
                          "simultaneous_violation": k / n_split,
                          "union_bound": 1 - (1 - dl) ** n_groups})
         print(c, {f"{cert}/{dn}": round(k / n_split, 3) for (cert, dn), k in viol.items()})

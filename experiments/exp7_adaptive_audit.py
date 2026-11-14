@@ -169,6 +169,12 @@ def real_rows(path, runs=20):
             cert = SelectiveCertificate(ALPHA, DELTA).fit(S[ca], D[ca])
             st = np.concatenate([rng.choice(te, T_CLEAN), rng.choice(idx_dv, T_DRIFT)])
             null = rng.choice(te, T_NULL)
+            # degenerate certificates (infeasible, or coverage < 0.05 on calibration) make the
+            # deferral-rate monitors artifacts (CUSUM's phi0 clipping): skip their monitor rows.
+            # Draws above still run so the random stream is unchanged by the skip.
+            if (not cert.feasible) or cert.coverage(S[ca]) < 0.05:
+                print(f"skip monitors: real {c} run {run} (degenerate certificate)")
+                continue
             null_res = _null_results(S[ca], cert.lam, S[null], D[null], 0, run)
             rows += _rows("real-hatexplain-davidson", c, 0, run, S[ca], cert.lam,
                           S[st], D[st], null_res)
