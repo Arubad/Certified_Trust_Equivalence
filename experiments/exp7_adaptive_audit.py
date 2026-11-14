@@ -17,11 +17,18 @@ and the adaptive monitor (2% -> 20%). Settings:
       skipped if the file is missing.
 
 Per (setting, model, monitor), over runs:
-  false_alarm   alarm on a null stream of the same length, all in-domain
-                (digits: 3000 clean inputs; real: 3000 held-out HateXplain)
-  detect        alarm at or after the change point (stream index 1500)
-  median_delay  median of (alarm_t - 1500) over detected runs
+  false_alarm        alarm on a null stream of the same length, all in-domain
+                     (digits: 3000 clean inputs; real: 3000 held-out HateXplain).
+                     On digits the null stream is simulated once per
+                     (model, seed, run) and shared across the three drift kinds,
+                     so the three settings of a model report the same false-alarm
+                     runs.
+  detect             alarm at or after the change point (stream index 1500)
+  early_alarm        alarm strictly before the change point on the drifted stream
+                     (counted separately; these are not in median_delay)
+  median_delay       median of (alarm_t - 1500) over detected runs
   audits_per_stream  mean number of audits on the drifted stream
+  null_audits_per_stream  mean number of audits on the null stream (in-control cost)
 """
 import os
 import sys
@@ -58,8 +65,9 @@ MONITOR_NAMES = [f"audit{b:.2f}" for b in FIXED_BUDGETS] + ["adaptive"]
 
 
 def run_stream(s, d, lam, monitor):
-    """Serve x_t iff s_t >= lam. Only served inputs are fed to the monitor
-    (the audit coin is drawn by the monitor). Stops at the first alarm.
+    """Serve x_t iff s_t >= lam. Only served inputs are fed to the monitor, and
+    the monitor calls L (via the callable) only when its audit coin fires.
+    Stops at the first alarm.
 
     coverage = served / processed (processed = stream up to alarm, or full),
     risk     = mean disagreement over served inputs (0 if none served).
@@ -73,7 +81,8 @@ def run_stream(s, d, lam, monitor):
             continue
         n_served += 1
         n_bad += int(d[t])
-        alarm = monitor.update(float(s[t]), int(d[t])) if adaptive else monitor.update(int(d[t]))
+        oracle = lambda: int(d[t])  # L is queried only if the monitor audits this input
+        alarm = monitor.update(float(s[t]), oracle) if adaptive else monitor.update(oracle)
         if alarm:
             alarm_t, processed = t, t + 1
             break
@@ -85,20 +94,29 @@ def run_stream(s, d, lam, monitor):
     }
 
 
-def _rows(setting, model, seed, run, s_ca, lam, s, d, s_null, d_null):
-    """One row per monitor for a drifted stream and the matched null stream."""
+def _null_results(s_ca, lam, s_null, d_null, seed, run):
+    """Null-stream outcome per monitor: {name: run_stream result}."""
+    return {name: run_stream(s_null, d_null, lam, make_monitor(name, s_ca, seed=1000 * seed + run))
+            for name in MONITOR_NAMES}
+
+
+def _rows(setting, model, seed, run, s_ca, lam, s, d, null_res):
+    """One row per monitor for a drifted stream, given the matched null results."""
     out = []
     for name in MONITOR_NAMES:
-        drift = run_stream(s, d, lam, make_monitor(name, s_ca, seed=run))
-        null = run_stream(s_null, d_null, lam, make_monitor(name, s_ca, seed=run))
+        drift = run_stream(s, d, lam, make_monitor(name, s_ca, seed=1000 * seed + run))
+        null = null_res[name]
         alarm = drift["alarm_t"]
         detected = alarm is not None and alarm >= T_CLEAN
+        early = alarm is not None and alarm < T_CLEAN
         out.append({"setting": setting, "model": model, "monitor": name, "seed": seed, "run": run,
                     "alarm_t": np.nan if alarm is None else alarm,
                     "detected": float(detected),
+                    "early_alarm": float(early),
                     "delay": (alarm - T_CLEAN) if detected else np.nan,
                     "null_false_alarm": float(null["alarm_t"] is not None),
-                    "n_audits": drift["n_audits"]})
+                    "n_audits": drift["n_audits"],
+                    "null_n_audits": null["n_audits"]})
     return out
 
 
@@ -120,12 +138,13 @@ def digits_rows(seeds=range(3), runs=5):
                 i_null = np.random.default_rng(7000 + 1000 * seed + run).choice(te, T_NULL)
                 Xnull = Xpo[i_null]
                 s_null = margin_score(C, Xnull); d_null = disagreement(T, C, Xnull)
+                null_res = _null_results(s_ca, cert.lam, s_null, d_null, seed, run)
                 for kind in DIGITS_KINDS:
                     Xd = drift_digits(Xpo[i_drift], kind, SEV, seed=run)
                     Xs = np.vstack([Xpo[i_clean], Xd])
                     s = margin_score(C, Xs); d = disagreement(T, C, Xs)
                     rows += _rows(f"digits-{kind}-{SEV}", name, seed, run, s_ca, cert.lam,
-                                  s, d, s_null, d_null)
+                                  s, d, null_res)
             print("digits seed", seed, name, "done", flush=True)
     return rows
 
@@ -150,8 +169,9 @@ def real_rows(path, runs=20):
             cert = SelectiveCertificate(ALPHA, DELTA).fit(S[ca], D[ca])
             st = np.concatenate([rng.choice(te, T_CLEAN), rng.choice(idx_dv, T_DRIFT)])
             null = rng.choice(te, T_NULL)
+            null_res = _null_results(S[ca], cert.lam, S[null], D[null], 0, run)
             rows += _rows("real-hatexplain-davidson", c, 0, run, S[ca], cert.lam,
-                          S[st], D[st], S[null], D[null])
+                          S[st], D[st], null_res)
         print("real", c, "done", flush=True)
     return rows
 
@@ -159,8 +179,12 @@ def real_rows(path, runs=20):
 def summarise(raw):
     g = raw.groupby(["setting", "model", "monitor"])
     summ = g.agg(false_alarm=("null_false_alarm", "mean"), detect=("detected", "mean"),
-                 median_delay=("delay", "median"), audits_per_stream=("n_audits", "mean")).reset_index()
-    return summ[["setting", "model", "monitor", "false_alarm", "detect", "median_delay", "audits_per_stream"]]
+                 early_alarm=("early_alarm", "mean"), median_delay=("delay", "median"),
+                 audits_per_stream=("n_audits", "mean"),
+                 null_audits_per_stream=("null_n_audits", "mean")).reset_index()
+    cols = ["setting", "model", "monitor", "false_alarm", "detect", "early_alarm",
+            "median_delay", "audits_per_stream", "null_audits_per_stream"]
+    return summ[cols]
 
 
 def plot(summ):
@@ -175,10 +199,11 @@ def plot(summ):
     colors = {m: c for m, c in zip(MONITOR_NAMES, ["tab:gray", "tab:blue", "tab:orange", "tab:red", "k"])}
     for m in MONITOR_NAMES:
         g = summ[(summ.monitor == m) & summ.median_delay.notna()]
-        ax.scatter(g.audits_per_stream, g.median_delay, color=colors[m], label=m, alpha=0.7, s=28)
+        ax.scatter(g.null_audits_per_stream, g.median_delay, color=colors[m], label=m, alpha=0.7, s=28)
     ax.set_xscale("log"); ax.set_yscale("log")
-    ax.set_xlabel("audits per stream (3000 served inputs)"); ax.set_ylabel("median detection delay (steps)")
-    ax.set_title("audit cost vs delay (each point = setting x model)")
+    ax.set_xlabel("in-control audits per null stream (3000 served inputs)")
+    ax.set_ylabel("median detection delay (steps)")
+    ax.set_title("in-control audit cost vs delay (each point = setting x model)")
     ax.legend(fontsize=8)
     fig.tight_layout(); fig.savefig(fig_path("exp7_adaptive.png"), dpi=130)
     print("[saved] results/exp7_adaptive.png")
@@ -193,7 +218,7 @@ def main():
     raw = pd.DataFrame(raw_rows)
     summ = summarise(raw)
     save_csv(summ, "exp7_adaptive.csv")
-    pd.set_option("display.width", 220)
+    pd.set_option("display.width", 240)
     print(summ.round(3).to_string(index=False))
     plot(summ)
 

@@ -49,6 +49,7 @@ def test_adaptive_detects_faster_than_fixed_lo():
     alpha, delta, T_CH, T, n_runs = 0.05, 0.10, 1500, 8000, 100
     s_cal = np.random.default_rng(0).beta(2, 5, size=400)
     delay_ad, delay_lo, audits_ad, audits_hi = [], [], [], []
+    early_ad, early_lo = 0, 0  # pre-change alarms: counted, kept out of the medians
     for k in range(n_runs):
         r = np.random.default_rng(5000 + k)
         s = np.concatenate([r.beta(2, 5, T_CH), r.beta(5, 2, T - T_CH)])
@@ -56,13 +57,23 @@ def test_adaptive_detects_faster_than_fixed_lo():
         ad = AdaptiveAuditMartingale(alpha, delta, s_cal=s_cal, seed=k)
         lo = ShadowAuditMartingale(alpha, delta, budget=0.02, seed=k)
         hi = ShadowAuditMartingale(alpha, delta, budget=0.20, seed=k)
-        delay_ad.append(_first_alarm(ad, s, d, True) - T_CH)
+        a = _first_alarm(ad, s, d, True)
+        if a < T_CH:
+            early_ad += 1
+        else:
+            delay_ad.append(a - T_CH)
         audits_ad.append(ad.n_audits)
-        delay_lo.append(_first_alarm(lo, s, d, False) - T_CH)
+        a = _first_alarm(lo, s, d, False)
+        if a < T_CH:
+            early_lo += 1
+        else:
+            delay_lo.append(a - T_CH)
         _first_alarm(hi, s, d, False)
         audits_hi.append(hi.n_audits)
     med_ad, med_lo = float(np.median(delay_ad)), float(np.median(delay_lo))
-    assert med_ad < 0.6 * med_lo, f"adaptive median delay {med_ad} not < 0.6 x fixed-lo {med_lo}"
+    assert med_ad < 0.6 * med_lo, (
+        f"adaptive median delay {med_ad} not < 0.6 x fixed-lo {med_lo} "
+        f"(pre-change alarms: adaptive {early_ad}, fixed-lo {early_lo})")
     assert np.mean(audits_ad) <= np.mean(audits_hi), (
         f"adaptive audits {np.mean(audits_ad):.1f} > fixed-0.20 audits {np.mean(audits_hi):.1f}")
 
