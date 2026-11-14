@@ -100,3 +100,22 @@ class ScoreKS:
         p = self.ks(np.asarray(self.buf), self.s_cal).pvalue
         self.buf = []
         return p < self.thr
+
+
+def expected_audit_delay(r, alpha, delta, budget, coverage=1.0, qs=None):
+    """Expected detection delay D(r) of ShadowAuditMartingale (Prop. 2, docs/theory.md).
+
+    Number of served inputs until the alarm, for a post-change disagreement
+    rate r and audit probability ``budget`` (b) with coverage c:
+
+        D(r) = (log(1/delta) + log|Q|) / (b * c * max_q KL_q(r)),
+        KL_q(r) = r log(q/alpha) + (1-r) log((1-q)/(1-alpha)).
+
+    Returns inf when max_q KL_q(r) <= 0 (the monitor has no drift to detect).
+    """
+    if qs is None:
+        qs = [min(0.95, 2 * alpha), min(0.95, 4 * alpha)]
+    kappa = max(r * np.log(q / alpha) + (1 - r) * np.log((1 - q) / (1 - alpha)) for q in qs)
+    if kappa <= 0:
+        return float("inf")
+    return float((np.log(1 / delta) + np.log(len(qs))) / (budget * coverage * kappa))
