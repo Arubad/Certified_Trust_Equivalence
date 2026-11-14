@@ -23,7 +23,7 @@ docstrings). The verdict is against the CSVs.
 | H6b | On real data the marginal certificate fails on identity groups; the group certificate repairs it | Homosexual-group violation 1.000 → 0.013 (int8) | **Supported (stronger than synthetic)** |
 | H6c | A real cross-platform shift voids the certificate, and the audit martingale detects it | risk 0.040 → 0.059 (int8) / 0.107 (q4); audit detection 0–0.18 | **Mixed**: the certificate is voided, detection mostly fails |
 | H6d | Auditing plus recalibration keeps a real streaming deployment within α at < 100 % of L's cost | q4 + 20 % audits: last-1 000 risk 0.044 at cost 0.606; int8 static already 0.056 | **Mixed** |
-| H7 | A predictable KS-triggered audit rate gets the high-budget delay at the low-budget in-control cost, with false alarm ≤ δ | delay ≤ fixed 20 % on every harmful-drift cell; in-control audits 1.06–9.4× fixed 2 % | **Mixed** |
+| H7 | A predictable KS-triggered audit rate gets the high-budget delay at the low-budget in-control cost, with false alarm ≤ δ | delay shorter than fixed 20 % on every harmful-drift cell; in-control audits 1.00–1.21× fixed 2 % (after a KS-reference bug fix); 3–5× on harmless shifts | **Supported (qualified)** |
 | H8a | Prop 2's delay formula D(r) predicts the simulated delay to within [0.7, 1.6] | ratio 0.856–1.058 over 20 (r, b) cells | **Supported** |
 | H8c | Per-group δ gives simultaneous failure ≤ 1−(1−δ)^G; δ/G gives ≤ δ | 0.12–0.197 ≤ 0.469; 0.000–0.027 ≤ 0.10 | **Supported** |
 | T1c | No λ can be certified below n = ⌈log δ / log(1−α)⌉ (230 at α = 0.01) | n_cal = 200, α = 0.01: feasible = 0.00 for all six real models | **Supported** |
@@ -97,8 +97,9 @@ accuracy–cost; we optimise cost subject to a trust guarantee.
    Proposition 2), so they are not detected. This is a design limit we quantify, not a bug.
 6. **Theory and its numerical checks** (`docs/theory.md`, Exp 8): the delay formula is within
    0.86–1.06 of simulation, and the group union bound holds on the real models. **Predictable
-   adaptive auditing** (Exp 7) is provably valid (Proposition 4). It is faster than every fixed
-   budget on harmful drift, but its in-control cost exceeds a fixed 2 % budget.
+   adaptive auditing** (Exp 7) is provably valid (Proposition 4). It detects harmful drift faster than
+   every fixed budget, including 20 % (rotation: median delay 199.5–386 vs 305–1 246), at 1.00–1.21× the
+   in-control audit cost of a fixed 2 % budget. Its remaining cost is extra audits on harmless score shifts.
 
 ## 3. Method
 
@@ -125,7 +126,8 @@ non-negative supermartingale under H<sub>0</sub>: risk ≤ α, so P(∃t: M<sub>
 for the entire stream. (ii) *Deferral-rate CUSUM* (label-free). (iii) *Windowed KS* on the
 score distribution (label-free). (iv) *Adaptive audit* (`AdaptiveAuditMartingale`, Exp 7): the
 same martingale, but the audit rate is 2 % until a KS test on the last 100 served scores
-(computed strictly before the current input) rejects at p < 0.01, then 20 %. On alarm the system
+(computed strictly before the current input) rejects at p < 0.01 against the calibration scores that would
+have been served (s<sub>cal</sub> ≥ λ̂), then 20 %. On alarm the system
 answers the next 300 inputs with L, recalibrates λ on them, and resumes.
 
 **Synthetic models and data (Exp 1–5, 7a, 8a).** 2×256 numpy MLP teacher; pruning 80/90 % (± masked fine-tuning),
@@ -649,58 +651,69 @@ cost close to a fixed 2 % budget.
 + 1 500 drifted (rotate / noise / occlude, severity 0.3), 5 runs × 3 seeds. The 3 000-input null stream is shared
 across the three drift kinds, so false alarm and in-control audits are identical across them. (b) Real: the Exp 6c setting
 with 20 runs. Degenerate certificates are skipped per run, so p50 averages 8 of 20 runs, q3 5 of 20, and p70 has none.
+The KS reference sample is the calibration scores that would have been served (s<sub>cal</sub> ≥ λ̂).
+
+*Bug fix, disclosed.* A first version of this experiment compared the window of *served* scores with *all* calibration
+scores, a truncated distribution against an untruncated one. That version rejected in-control whenever a sizeable fraction
+of inputs was deferred, and used the 20 % rate on 91.7 % of served steps with no shift present. The reference was corrected
+in commit 0226acb, which adds the test `test_adaptive_no_trigger_without_shift`, and the results below were regenerated. The
+fixed-budget rows did not change. The adaptive in-control audits dropped to about the fixed-2 % level (prune90 176 → 22.6,
+int8 251 → 53.5, p50 71 → 9.8 per null stream).
 
 **Results** (`results/exp7_adaptive.csv`). Each cell gives detect / median delay / in-control audits per 3 000-input null
 stream / false alarm. Harmful drift (digits rotate 0.3):
 
 | model | audit 2 % | audit 5 % | audit 10 % | audit 20 % | **adaptive 2→20 %** |
 |---|---|---|---|---|---|
-| distill25 | 0.20 / 1095 / 63 / 0.00 | 0.73 / 843 / 151 / 0.00 | 0.93 / 552 / 279 / 0.07 | 0.93 / 643 / 603 / 0.00 | **1.00 / 209 / 70 / 0.00** |
-| prune90 | 0.33 / 859 / 19 / 0.07 | 0.67 / 609 / 46 / 0.00 | 0.60 / 515 / 90 / 0.00 | 0.67 / 305 / 188 / 0.00 | 0.67 / 282 / **176** / 0.00 |
-| pruneFT90 | 0.47 / 810 / 62 / 0.00 | 0.87 / 518 / 148 / 0.00 | 0.93 / 396.5 / 293 / 0.00 | 1.00 / 403 / 591 / 0.00 | **1.00 / 238 / 65 / 0.00** |
-| quant3b | 0.07 / 1355 / 63 / 0.00 | 0.13 / 1091.5 / 151 / 0.00 | 0.40 / 1237 / 299 / 0.00 | 0.60 / 1246 / 603 / 0.00 | **1.00 / 386 / 74 / 0.00** |
+| distill25 | 0.20 / 1095 / 63.1 / 0.00 | 0.73 / 843 / 151.1 / 0.00 | 0.93 / 552 / 279.5 / 0.07 | 0.93 / 643 / 603.3 / 0.00 | **1.00 / 205 / 72.9 / 0.00** |
+| prune90 | 0.33 / 859 / 18.7 / 0.07 | 0.67 / 609 / 46.3 / 0.00 | 0.60 / 515 / 90.3 / 0.00 | 0.67 / 305 / 187.5 / 0.00 | **0.67 / 199.5 / 22.6 / 0.07** |
+| pruneFT90 | 0.47 / 810 / 61.8 / 0.00 | 0.87 / 518 / 148.3 / 0.00 | 0.93 / 396.5 / 293.1 / 0.00 | 1.00 / 403 / 590.7 / 0.00 | **1.00 / 238 / 68.5 / 0.00** |
+| quant3b | 0.07 / 1355 / 63.1 / 0.00 | 0.13 / 1091.5 / 151.3 / 0.00 | 0.40 / 1237 / 299.1 / 0.00 | 0.60 / 1246 / 603.3 / 0.00 | **1.00 / 386 / 73.9 / 0.00** |
 
-Harmless drift (digits noise 0.3; occlusion detects ≤ 0.07 for every monitor): the adaptive monitor detects 0.13 / 0.20 / 0.07 / 0.00
-(distill25 / prune90 / pruneFT90 / quant3b), and on the drifted stream it spends 257.5 / 159 / 236.5 / 303.4 audits, against
-63 / 18.3 / 58.7 / 63.1 for fixed 2 %.
+Harmless drift. On noise 0.3 the adaptive monitor detects 0.13 / 0.07 / 0.07 / 0.00 (distill25 / prune90 / pruneFT90 /
+quant3b). On the drifted stream it spends 268.2 / 59.3 / 256.2 / 303.4 audits, against 63.0 / 18.3 / 58.7 / 63.1 for fixed 2 %.
+On occlusion 0.3 it detects nothing and spends 74.7 / 26.4 / 74.9 / 83.5 audits.
 
 Real HateXplain → Davidson:
 
 | model | audit 2 % | audit 5 % | audit 10 % | audit 20 % | **adaptive** |
 |---|---|---|---|---|---|
-| int8 | 0.00 / — / 48 / 0.10 | 0.00 / — / 127 / 0.00 | 0.00 / — / 228 / 0.15 | 0.00 / — / 496 / 0.05 | 0.10 / 680 / **251** / 0.05 |
-| p30 | 0.00 / — / 54 / 0.05 | 0.00 / — / 139 / 0.00 | 0.00 / — / 284 / 0.00 | 0.00 / — / 566 / 0.00 | 0.10 / 1213 / 76 / 0.05 |
-| q4 | 0.05 / 1229 / 58 / 0.05 | 0.00 / — / 134 / 0.10 | 0.15 / 1277 / 273 / 0.10 | 0.20 / 1022.5 / 587 / 0.00 | **0.60 / 707 / 68 / 0.00** |
-| p50 (8 runs) | 0.12 / 527 / 10 / 0.00 | 0.25 / 979 / 20 / 0.00 | 0.12 / 508 / 41 / 0.00 | 0.12 / 433 / 86 / 0.00 | 0.12 / 433 / 71 / 0.00 |
-| q3 (5 runs) | 0.00 / — / 6 / 0.00 | 0.00 / — / 11 / 0.20 | 0.00 / — / 27 / 0.00 | 0.00 / — / 56 / 0.00 | 0.00 / — / 39 / 0.00 |
+| int8 | 0.00 / — / 47.7 / 0.10 | 0.00 / — / 127.5 / 0.00 | 0.00 / — / 228.1 / 0.15 | 0.00 / — / 495.7 / 0.05 | 0.10 / 661.5 / 53.5 / 0.10 |
+| p30 | 0.00 / — / 54.2 / 0.05 | 0.00 / — / 138.8 / 0.00 | 0.00 / — / 283.7 / 0.00 | 0.00 / — / 566.4 / 0.00 | 0.10 / 983 / 60.1 / 0.05 |
+| q4 | 0.05 / 1229 / 57.5 / 0.05 | 0.00 / — / 134.2 / 0.10 | 0.15 / 1277 / 273.1 / 0.10 | 0.20 / 1022.5 / 587.0 / 0.00 | **0.65 / 524 / 65.1 / 0.00** |
+| p50 (8 runs) | 0.12 / 527 / 9.5 / 0.00 | 0.25 / 979 / 19.6 / 0.00 | 0.12 / 508 / 41.1 / 0.00 | 0.12 / 433 / 86.4 / 0.00 | 0.12 / 527 / 9.8 / 0.00 |
+| q3 (5 runs) | 0.00 / — / 5.8 / 0.00 | 0.00 / — / 10.6 / 0.20 | 0.00 / — / 27.2 / 0.00 | 0.00 / — / 56.4 / 0.00 | 0.00 / — / 5.8 / 0.00 |
 
-**Explanation.** (i) *Validity holds.* The adaptive false-alarm rate is 0.00 on every digits cell and ≤ 0.05 on the real
-cells, as Proposition 4 requires. Fixed budgets show 0.10–0.20 in five real cells (int8 at 2 % and 10 %; q4 at 5 % and 10 %; q3 at 5 %,
-over only 5 runs). With 20 runs the standard error is about 0.07, and §2.1 of the theory notes that the in-domain alarm
-probability is bounded by δ<sub>cert</sub> + δ, not δ, because a failed certificate (≤ 0.12 held-out violation in 6c)
-makes an alarm a true detection.
+**Explanation.** (i) *Validity holds.* The adaptive false-alarm rate is ≤ δ in every cell: 0.00–0.07 on digits and
+0.00–0.10 on real data. Where it is non-zero (prune90 0.07, int8 0.10, p30 0.05), it equals the fixed-2 % rate on the same
+runs. The adaptive monitor runs at 2 % in-control, so it inherits that monitor's alarms, and these are coarse counts
+(1–2 alarms in 15 or 20 runs). Fixed budgets reach 0.10–0.20 in five real cells (int8 at 2 % and 10 %, q4 at 5 % and 10 %,
+and q3 at 5 % over only 5 runs). With 20 runs the standard error is about 0.07. §2.1 of the theory also notes that the
+in-domain alarm probability is bounded by δ<sub>cert</sub> + δ, not by δ, because when the certificate itself has failed
+(≤ 0.12 held-out violation in 6c), an alarm is a true detection.
 
-(ii) *Faster than every fixed budget, including 20 %, on harmful drift.* The adaptive monitor has the shortest delay
-in every rotate cell (209–386 vs 305–1246 for fixed 20 %) and on q4 real (707 vs 1022.5, with detection 0.60 vs 0.20). This beats
-our own prior: a monitor that never audits more than 20 % beats one that always audits 20 %. The reason is the pre-change
-period. log M has no floor, so under H<sub>0</sub> every audit pushes it further negative, and a fixed 20 % monitor
-spends about ten times as many audits as a 2 % one digging that hole during the 1 500 clean inputs. The adaptive monitor
-reaches the change point with log M near 0 and only then switches to 20 %. This is the same mechanism that makes
-observed delays exceed Prop 2's D(r) (§3.1).
+(ii) *Faster than every fixed budget on harmful drift, including 20 %.* The adaptive monitor has the shortest median
+delay in every rotate cell (199.5–386, against 305–1 246 for fixed 20 %) and detection at least as high. On the one real
+model whose shift is detectable, q4, it detects 0.65 at a delay of 524, against 0.20 at 1 022.5 for fixed 20 %. A monitor that never
+audits more than 20 % beats one that always does because of the pre-change period. log M has no floor, so under
+H<sub>0</sub> every audit pushes it further negative. A fixed 20 % monitor makes about ten times as many audits as a 2 %
+one during the 1 500 clean inputs, so it digs a deeper hole before the change. The adaptive monitor reaches the change
+point with log M near 0 and only then switches to 20 %. The same mechanism makes observed delays exceed Prop 2's D(r)
+(§3.1). For int8 and p30 no monitor does well: their excess risk lies in the blind zone (6c).
 
-(iii) *In-control cost is not that of 2 %.* The adaptive monitor's null-stream audits are 1.06–1.4× fixed 2 % for
-high-coverage models (pruneFT90 65 vs 62, distill25 70 vs 63, quant3b 74 vs 63, q4 68 vs 58, p30 76 vs 54). They are 5–9.4× for low-coverage models
-(int8 251 vs 48, q3 39 vs 6, p50 71 vs 10, prune90 176 vs 19, which is close to fixed 20 %'s 188). Two causes are visible. First, KS also fires on
-*harmless* score shifts: on noise streams, with little to detect, the adaptive monitor spends 4–9× the audits of fixed 2 %. Second, and more important, the in-control inflation scales with 1 − coverage, which points at an implementation choice. The
-KS window holds *served* scores (s ≥ λ), but it is compared with *all* calibration scores. That is a truncated distribution
-against an untruncated one, so the test rejects in-control whenever a sizeable fraction is deferred. We did not re-run with the
-reference set to the served calibration scores (s<sub>cal</sub> ≥ λ), so this diagnosis is a strong inference from the
-coverage pattern, not a tested fix.
+(iii) *In-control cost is close to fixed 2 %.* Null-stream audits are 1.00–1.21× those of fixed 2 % across all nine
+models (e.g. prune90 22.6 vs 18.7, int8 53.5 vs 47.7, quant3b 73.9 vs 63.1, distill25 72.9 vs 63.1, q3 5.8 vs 5.8). The
+residual 10–20 % comes from chance KS rejections. A level-0.01 test is recomputed every 10 served steps, so over a 3 000-input
+stream a few spurious triggers are expected, each switching to the 20 % rate briefly. The cost that remains is the
+*harmless*-shift cost. KS reacts to any change in the score distribution, so on the noise streams the adaptive monitor
+spends 3–5× the audits of fixed 2 % even though there is little to detect. This is the label-free trigger's known weakness
+(Exp 4, 6c), and here it costs audits, not false alarms.
 
-**Verdict: Mixed.** (i) is supported. (ii) is supported and exceeded: adaptive matches or beats fixed 20 % on delay and
-detection in every harmful-drift cell. (iii) is supported only for high-coverage models and refuted for low-coverage ones.
-So adaptive auditing dominates fixed 5–20 % on (in-control cost, delay) wherever coverage is high. It does not dominate
-fixed 2 % on in-control cost anywhere.
+**Verdict: Supported, with one qualification.** (i) holds. (ii) holds and is exceeded. (iii) holds in-control
+(1.00–1.21× fixed 2 %). On harmful drift the adaptive monitor therefore dominates fixed 5–20 % on both in-control cost and
+delay. Against fixed 2 % it pays 1.00–1.21× the in-control audits for a 3.4–5.3× shorter delay and higher detection. The qualification:
+on harmless score shifts it spends 3–5× the audits of fixed 2 %. This verdict replaces the "Mixed" verdict of the earlier
+draft, which was an artefact of the KS-reference bug.
 
 ![](results/exp7_adaptive.png)
 
@@ -790,8 +803,9 @@ confidence level can repair a certificate that conditions on the wrong populatio
   delay for large excesses.
 * **Pre-change drift of log M.** There is no floor, so delays measured from a change after a long in-control period exceed
   D(r) (Exp 4/5/7). A floored statistic is CUSUM-like and loses Ville's anytime guarantee. The trade-off is unexplored.
-* **Adaptive auditing's KS reference.** It compares served scores with all calibration scores, which inflates in-control audits
-  for low-coverage models (Exp 7). The fix (use the calibration scores at or above λ) is untested.
+* **Adaptive auditing reacts to harmless shifts.** Its KS trigger cannot tell a harmful score shift from a harmless one,
+  so on harmless drift it spends 3–5× the audits of a fixed 2 % budget (Exp 7). (An earlier version also over-triggered
+  in-control because it compared served scores with *all* calibration scores. That is fixed and tested; see Exp 7.)
 * **Degenerate certificates and subsets of runs.** q3, p70 and (in about half the draws) p50 are infeasible or serve under 5 %. Their
   monitor rows are skipped per run, so p50/q3 monitor numbers in 6c and 7b average over 20/50, 13/50, 8/20 and 5/20 runs,
   and are noisy.
@@ -811,9 +825,10 @@ confidence level can repair a certificate that conditions on the wrong populatio
    (delay and blind zone), Corollary 3 (simultaneous group guarantee), Proposition 4 (predictable adaptive auditing), all
    checked numerically (Exp 8, `tests/`). Remaining: implement the held-out-grid fix so the shipped code matches
    Theorem 1(a) verbatim.
-3. **Adaptive auditing — partially done** (Exp 7). The predictable KS trigger is valid and the fastest monitor on harmful
-   drift. Remaining: a truncation-matched KS reference, an alternative set or betting confidence sequence without a blind zone,
-   and a principled treatment of pre-change drift.
+3. **Adaptive auditing — done for the first design** (Exp 7). The predictable KS trigger is valid, is the fastest
+   monitor on harmful drift, and costs about a fixed 2 % budget in-control. Remaining: a trigger that ignores harmless
+   score shifts, an alternative set or betting confidence sequence without a blind zone, and a principled treatment of
+   pre-change drift.
 4. **Temporal drift on real data — open.** It needs a timestamped hate-speech corpus (train and calibrate on 2017, stream
    2019–2024). Exp 6c's HateXplain → Davidson shift is a stand-in. Its lesson, that robustness to shift can reverse the
    in-domain ranking of compressions (6d), is what the temporal study should test at scale.
