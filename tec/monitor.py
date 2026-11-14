@@ -102,6 +102,75 @@ class ScoreKS:
         return p < self.thr
 
 
+class AdaptiveAuditMartingale:
+    """Shadow-audit martingale with a predictable, KS-triggered audit rate.
+
+    Audit rate for step t (decided before s_t is looked at):
+      b_t = b_hi if a two-sample KS test of the last ``window`` *served* scores
+            (all strictly before t) against ``s_cal`` has p < ``ks_p``,
+            otherwise b_lo;
+      b_lo until the window holds ``window`` scores, and always b_lo if
+            ``s_cal`` is None.
+    Then the audit coin A_t ~ Bern(b_t) is drawn, the same log-martingales as
+    ``ShadowAuditMartingale`` are updated if audited, and only afterwards s_t
+    is appended to the window. Because b_t is predictable, Proposition 4
+    (docs/theory.md) applies: P(exists t: M_t >= 1/delta) <= delta.
+
+    Cost control: the KS test is recomputed only every 10 updates (when the
+    update count t is a multiple of 10). The flag from the last recomputation
+    is reused in between. Each recomputation uses only the window of past
+    scores at that moment, so the rule stays predictable.
+
+    ``update(s, d_if_audited)`` returns True on alarm (only ever on an audited
+    step, as in ShadowAuditMartingale). After each call ``budget_now`` holds
+    the rate that was used for that step.
+    """
+
+    def __init__(self, alpha, delta=0.1, b_lo=0.02, b_hi=0.20, s_cal=None, window=100, ks_p=0.01, seed=0):
+        from scipy.stats import ks_2samp
+        self.alpha, self.delta = alpha, delta
+        self.b_lo, self.b_hi = b_lo, b_hi
+        self.s_cal = None if s_cal is None else np.asarray(s_cal, dtype=float)
+        self.window, self.ks_p = window, ks_p
+        self.ks = ks_2samp
+        self.rng = np.random.default_rng(seed)
+        self.qs = [min(0.95, 2 * alpha), min(0.95, 4 * alpha)]
+        self.reset()
+
+    def reset(self):
+        self.logM = np.zeros(len(self.qs))
+        self.n_audits = 0
+        self.t = 0
+        self.budget_now = self.b_lo
+        self._buf = []
+        self._suspect = False
+
+    def _suspicious(self):
+        if self.s_cal is None or len(self._buf) < self.window:
+            return False
+        if self.t % 10 == 0:
+            self._suspect = bool(self.ks(np.asarray(self._buf), self.s_cal).pvalue < self.ks_p)
+        return self._suspect
+
+    def update(self, s, d_if_audited):
+        """s: the served score at this step; d_if_audited: a callable or value
+        giving the disagreement indicator, used only if the coin audits."""
+        self.budget_now = self.b_hi if self._suspicious() else self.b_lo
+        alarm = False
+        if self.rng.random() < self.budget_now:
+            d = int(d_if_audited() if callable(d_if_audited) else d_if_audited)
+            self.n_audits += 1
+            a = self.alpha
+            for i, q in enumerate(self.qs):
+                self.logM[i] += d * np.log(q / a) + (1 - d) * np.log((1 - q) / (1 - a))
+            alarm = bool(np.mean(np.exp(self.logM)) >= 1.0 / self.delta)
+        self._buf.append(float(s))
+        if len(self._buf) > self.window:
+            del self._buf[0]
+        self.t += 1
+        return alarm
+
+
 def expected_audit_delay(r, alpha, delta, budget, coverage=1.0, qs=None):
     """Expected detection delay D(r) of ShadowAuditMartingale (Prop. 2, docs/theory.md).
 
