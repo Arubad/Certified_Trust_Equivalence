@@ -107,10 +107,13 @@ class AdaptiveAuditMartingale:
 
     Audit rate for step t (decided before s_t is looked at):
       b_t = b_hi if a two-sample KS test of the last ``window`` *served* scores
-            (all strictly before t) against ``s_cal`` has p < ``ks_p``,
+            (all strictly before t) against the KS reference has p < ``ks_p``,
             otherwise b_lo;
       b_lo until the window holds ``window`` scores, and always b_lo if
-            ``s_cal`` is None.
+            ``s_cal`` is None or the reference has fewer than 20 points.
+    The KS reference is ``s_cal[s_cal >= lam]``: reference = calibration scores
+    that would have been served. Comparing served scores against all calibration
+    scores would fire the trigger whenever coverage < 1, with no drift at all.
     Then the audit coin A_t ~ Bern(b_t) is drawn, the same log-martingales as
     ``ShadowAuditMartingale`` are updated if audited, and only afterwards s_t
     is appended to the window. Because b_t is predictable, Proposition 4
@@ -126,11 +129,15 @@ class AdaptiveAuditMartingale:
     the rate that was used for that step.
     """
 
-    def __init__(self, alpha, delta=0.1, b_lo=0.02, b_hi=0.20, s_cal=None, window=100, ks_p=0.01, seed=0):
+    def __init__(self, alpha, delta=0.1, b_lo=0.02, b_hi=0.20, s_cal=None, lam=-np.inf,
+                 window=100, ks_p=0.01, seed=0):
         from scipy.stats import ks_2samp
         self.alpha, self.delta = alpha, delta
         self.b_lo, self.b_hi = b_lo, b_hi
-        self.s_cal = None if s_cal is None else np.asarray(s_cal, dtype=float)
+        ref = None if s_cal is None else np.asarray(s_cal, dtype=float)
+        if ref is not None:
+            ref = ref[ref >= lam]
+        self.s_cal = ref if (ref is not None and len(ref) >= 20) else None
         self.window, self.ks_p = window, ks_p
         self.ks = ks_2samp
         self.rng = np.random.default_rng(seed)

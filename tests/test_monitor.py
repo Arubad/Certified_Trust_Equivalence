@@ -90,3 +90,24 @@ def test_policy_infeasible_certificate():
     assert out["risk"] == 0
     assert out["alarm_t"] is None
     assert out["n_audits"] == 0
+
+
+def test_adaptive_no_trigger_without_shift():
+    # U(0,1) calibration and stream, no shift, certificate threshold lam = 0.6.
+    # Only served scores (s >= lam) are fed. The KS reference must be the calibration
+    # scores that would have been served, so coverage < 1 alone must not raise the rate.
+    from tec.monitor import AdaptiveAuditMartingale
+    alpha, delta, lam, T, n_streams = 0.05, 0.10, 0.6, 3000, 200
+    hi_steps, steps = 0, 0
+    for k in range(n_streams):
+        r = np.random.default_rng(9000 + k)
+        s_cal = np.random.default_rng(8000 + k).random(400)
+        s = r.random(T)
+        d = (r.random(T) < alpha).astype(int)
+        mon = AdaptiveAuditMartingale(alpha, delta, s_cal=s_cal, lam=lam, seed=k)
+        for t in np.flatnonzero(s >= lam):
+            mon.update(s[t], int(d[t]))
+            hi_steps += mon.budget_now == mon.b_hi
+            steps += 1
+    frac = hi_steps / steps
+    assert frac < 0.05, f"b_hi used on {frac:.3f} of served steps without any shift (limit 0.05)"

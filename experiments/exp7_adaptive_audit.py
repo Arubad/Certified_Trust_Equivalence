@@ -54,9 +54,10 @@ REAL_MODELS = ["int8", "q4", "q3", "p30", "p50", "p70"]
 REAL_NPZ = os.path.join(HERE, "..", "results", "real", "real_preds.npz")
 
 
-def make_monitor(name, s_cal, seed):
+def make_monitor(name, s_cal, lam, seed):
     if name == "adaptive":
-        return AdaptiveAuditMartingale(ALPHA, DELTA, b_lo=0.02, b_hi=0.20, s_cal=s_cal,
+        # KS reference = calibration scores that would have been served (s_cal >= lam)
+        return AdaptiveAuditMartingale(ALPHA, DELTA, b_lo=0.02, b_hi=0.20, s_cal=s_cal, lam=lam,
                                        window=100, ks_p=0.01, seed=seed)
     return ShadowAuditMartingale(ALPHA, DELTA, budget=float(name[len("audit"):]), seed=seed)
 
@@ -96,7 +97,7 @@ def run_stream(s, d, lam, monitor):
 
 def _null_results(s_ca, lam, s_null, d_null, seed, run):
     """Null-stream outcome per monitor: {name: run_stream result}."""
-    return {name: run_stream(s_null, d_null, lam, make_monitor(name, s_ca, seed=1000 * seed + run))
+    return {name: run_stream(s_null, d_null, lam, make_monitor(name, s_ca, lam, seed=1000 * seed + run))
             for name in MONITOR_NAMES}
 
 
@@ -104,7 +105,7 @@ def _rows(setting, model, seed, run, s_ca, lam, s, d, null_res):
     """One row per monitor for a drifted stream, given the matched null results."""
     out = []
     for name in MONITOR_NAMES:
-        drift = run_stream(s, d, lam, make_monitor(name, s_ca, seed=1000 * seed + run))
+        drift = run_stream(s, d, lam, make_monitor(name, s_ca, lam, seed=1000 * seed + run))
         null = null_res[name]
         alarm = drift["alarm_t"]
         detected = alarm is not None and alarm >= T_CLEAN
