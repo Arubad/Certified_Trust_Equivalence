@@ -105,6 +105,33 @@ def test_split_mode_small_n_infeasible():
     assert cert.trace == []
 
 
+def test_split_mode_start_fallback():
+    # Step 4 fallback j0 = G'-1: 2*m0 <= n, but n_T < 2*m0, so no grid point can reach the
+    # 2*m0 rescaled design count and the walk tests only the last grid value, min s[D].
+    n, alpha, delta = 500, 0.01, 0.1
+    rng = np.random.default_rng(0)
+    s = rng.uniform(0, 1, n)
+    cert = SelectiveCertificate(alpha, delta, mode="split")
+    m0 = cert.min_accept
+    assert m0 == int(np.ceil(np.log(delta) / np.log(1 - alpha))) == 230
+    n_D = int(np.floor(cert.design_frac * n)); n_T = n - n_D
+    assert 2 * m0 <= n and n_T < 2 * m0, (m0, n_D, n_T)          # the fallback case
+    perm = np.random.default_rng(cert.seed).permutation(n)
+    D, T = perm[:n_D], perm[n_D:]
+    lam_last = s[D].min()
+    # (i) no disagreements: one test at min s[D], with >= m0 accepted test points -> feasible there
+    cert.fit(s, np.zeros(n, dtype=int))
+    assert len(cert.trace) == 1, cert.trace
+    assert cert.trace[0][1] >= m0
+    assert cert.feasible and cert.lam == lam_last
+    # (ii) one disagreement among the accepted test points: P(Bin(n_j, .01) <= 1) > delta -> infeasible
+    d = np.zeros(n, dtype=int)
+    d[T[np.argmax(s[T])]] = 1
+    cert2 = SelectiveCertificate(alpha, delta, mode="split").fit(s, d)
+    assert len(cert2.trace) == 1 and cert2.trace[0][2] == 1, cert2.trace
+    assert not cert2.feasible and cert2.lam == np.inf
+
+
 def test_same_mode_unchanged():
     # expected lam computed with the pre-split code (seed 3, n=1000, alpha=0.05, delta=0.1)
     rng = np.random.default_rng(3)

@@ -30,7 +30,7 @@ docstrings). The verdict is against the CSVs.
 | H9 | Split mode (Theorem 1′) stays valid where same mode's assumptions fail, at a small coverage cost | split max violation 0.090 over 53 cells, incl. bootstrap population mode; coverage loss ≤ 0.02 in 40 of 53 cells, but 0.27–0.39 on the small 6b groups | **Supported (qualified)**: valid and proven; the cost is small only with ample calibration data |
 | H10 | Fine-tuned / distilled compressions sit in the certifiable middle ground, and certified cost ranks them differently from accuracy | α = 0.05: coverage 0.61–0.93, cost 0.50–0.74 (one-shot p50/p70: 0.95–1.00); accuracy ranks p50ft first, certified cost ranks it last | **Supported** |
 | H11a | The Exp 6b group failure replicates on CivilComments | marginal violation 0.99–1.00 on black / white (all 5 lossy models), LGBTQ, muslim; group certificate ≤ 0.073 | **Supported** |
-| H11b | Risk drifts upward over time, and audits detect it at about Prop 2's delay | Q1 → Q4 rise ≤ 0.012, inside the CIs; one quarter above α (p50 Q4 0.0575, CI [0.048, 0.069]); every risk in or below the blind zone, so D = ∞; detection 0 | **Not supported** (drift within noise; Prop 2's D = ∞ holds) |
+| H11b | Risk drifts upward over time, and audits detect it at about Prop 2's delay | Q4 the highest quarter for 5/6 models, stream > calibration disagreement for 6/6; but Q1 vs Q4 two-proportion tests give raw p ≥ 0.023 and Bonferroni p ≥ 0.135 over 6 models; every risk in or below the blind zone, so D = ∞; detection 0 | **Inconclusive**: a small, consistently upward drift, not significant after multiplicity correction; the detection half is not testable (D = ∞) |
 
 ---
 
@@ -116,8 +116,8 @@ accuracy–cost; we optimise cost subject to a trust guarantee.
    but the most voided on Davidson (risk 0.155). It is also the first real case where the audit martingale detects a
    shift (0.70 at 10 %), as Prop 2 predicts for a risk outside the blind zone.
 9. **A second dataset, CivilComments** (Exp 11, 32 GPU-minutes). The group failure replicates, on the race identities
-   (black / white) rather than sexual orientation. The temporal stream (2017 Q1–Q4) shows only a sub-noise upward drift,
-   which no monitor detects, exactly as Prop 2's blind zone predicts.
+   (black / white) rather than sexual orientation. The temporal stream (2017 Q1–Q4) shows a small, consistently upward drift
+   that is not significant after multiplicity correction. No monitor detects it, exactly as Prop 2's blind zone predicts.
 
 ## 3. Method
 
@@ -889,7 +889,9 @@ violation ≤ 0.13).
 
 (Group pool sizes are in brackets.) Over all 53 (setting, model, α, n<sub>cal</sub>) cells, the maximum violation is
 **0.090** for split (HateXplain int8, α = 0.05, n = 1000) and 0.095 for same (digits pruneFT90, n = 400). The coverage
-loss (same − split, derived) is ≤ 0.020 in 40 of the 53 cells and above 0.07 in 10.
+loss (same − split, derived) is ≤ 0.020 in 40 of the 53 cells and above 0.07 in 10. Two caveats on the count: it includes
+digits lowrank25 (n = 200 and 400), which is infeasible in both modes and so has zero gap trivially, and one cell (digits
+distill25, n = 200, gap 0.020038) is counted only after rounding; unrounded, the count is 39.
 
 **Explanation.** *Validity.* Split mode is never above δ, and now this is a theorem (Theorem 1′), not only an
 observation. §1.4 shows that bootstrap-then-split is covered exactly with respect to the pool law that population mode
@@ -1037,7 +1039,7 @@ The maximum group-certificate violation over all 24 (model, group) cells is 0.09
 cells (African, other, and the groups not listed) are ≤ 0.067.
 
 **Explanation and verdict: replicates H6b.** The Homosexual group fails the marginal certificate in every draw for all
-four trained models, as it did for int8, q4 and p30. The label-trained models add a Jewish-group failure (0.877–0.977)
+four trained models, as it did for int8, q4 and p30. Two of the label-trained models, p50ft and q4ft, add a Jewish-group failure (0.977, 0.877; p70ft 0.030)
 that the one-shot models did not show. The repair is the same as before, and so is its price: the group certificate
 serves 0.2–47 % of Homosexual posts. For p70ft it serves nothing there, which is the correct refusal.
 
@@ -1047,26 +1049,31 @@ serves 0.2–47 % of Homosexual posts. For p70ft it serves nothing there, which 
 
 | model | HX coverage / risk / P(risk > α) | Davidson coverage / risk / P(risk > α) | audit 2 / 5 / 10 %: detect (median delay) | Prop 2 D at 2 / 5 / 10 % (derived) | KS / CUSUM detect | audit false alarm |
 |---|---|---|---|---|---|---|
-| distil6 | 0.934 / 0.042 / 0.14 | 0.929 / **0.155** / **1.00** | 0.22 (1062) / 0.46 (832) / **0.70** (845) | 2 294 / 918 / 459 | 0.96 / 0.20 | 0.08–0.10 |
-| p70ft | 0.608 / 0.036 / 0.08 | 0.371 / **0.086** / **1.00** | 0.02 / 0.00 / 0.04 | 38 511 / 15 405 / 7 702 | 0.92 / 0.92 | 0.00–0.02 |
+| distil6 | 0.934 / 0.042 / 0.14 | 0.929 / **0.155** / **1.00** | 0.22 (1062) / 0.46 (832) / **0.70** (845) | 2 293 / 917 / 459 | 0.96 / 0.20 | 0.08–0.10 |
+| p70ft | 0.608 / 0.036 / 0.08 | 0.371 / **0.086** / **1.00** | 0.02 / 0.00 / 0.04 | 38 420 / 15 368 / 7 684 | 0.92 / 0.92 | 0.00–0.02 |
 | q4ft | 0.742 / 0.039 / 0.04 | 0.635 / 0.047 / 0.38 | 0.00 / 0.02 / 0.00 | ∞ (r < α) | 0.94 / 0.92 | 0.02–0.08 |
 | p50ft | 0.667 / 0.036 / 0.08 | 0.503 / 0.034 / 0.02 | 0.00 / 0.00 / 0.00 | ∞ (r < α) | 1.00 / 0.96 | 0.00–0.02 |
 
-D is `expected_audit_delay(r, 0.05, 0.1, b, coverage)`, with r and the coverage taken from the Davidson column.
+D is `expected_audit_delay(r, 0.05, 0.1, b, coverage)`, with the unrounded r and coverage of the Davidson column. KS / CUSUM
+false alarms on the null stream (`exp10c_monitors.csv`): distil6 0.10 / 0.24, p70ft 0.14 / 0.24, q4ft 0.08 / 0.16, p50ft
+0.10 / 0.12.
 
 **Explanation.** The shift voids the certificate for distil6 (3.1× α) and p70ft (1.7× α). It does not void it for
-p50ft or q4ft: their Davidson coverage falls (0.667 → 0.503, 0.742 → 0.635), so deferral absorbs the shift. distil6 is the
-most faithful model in-domain and the worst on the shift. Its flips on Davidson sit at high margin, the same pattern as
-Exp 6's q4. distil6's r = 0.155 is far outside the blind zone, and here the audit martingale detects, as Prop 2 predicts:
-D = 459 at 10 %, against 0.70 detection at a median 845. The observed delay is longer than D for the reason given in
-§3.1 (pre-change negative drift of log M). At 5 % and 2 % the medians (832, 1 062) are conditional on detection within the
+p50ft or q4ft: their Davidson coverage falls (0.667 → 0.503, 0.742 → 0.635), so deferral absorbs the shift. distil6 has the highest in-domain
+agreement (0.933) and the highest certified risk on the shift (0.155); its Davidson *accuracy* (0.704) is the best of all, L included. Its flips on Davidson sit at high margin, the same pattern as
+Exp 6's q4. distil6's r = 0.155 is far outside the blind zone, and here the audit martingale detects: 0.70 detection at 10 %, at a median
+delay of 845, about 1.8× D = 459 (derived: 845 / 459 = 1.84). That is outside Exp 8a's [0.7, 1.6] band for a monitor started
+at the change point, and consistent with the pre-change negative drift of log M (§3.1). At 5 % and 2 % the medians (832, 1 062) are conditional on detection within the
 1 500-input window, so they are truncated. p70ft is outside the blind zone too (r = 0.086), but it serves only 37 % of
 inputs, so audits arrive slowly and D = 7 702 at 10 % is five times the window. Its 0.04 detection is what that predicts.
-Audit false alarms are ≤ 0.10. KS fires at 0.92–1.00 for every model, and CUSUM at 0.92–0.96 for the three models whose coverage drops. That includes the two models whose risk stays below α.
+Audit false alarms are ≤ 0.10. KS fires at 0.92–1.00 for every model, and CUSUM at 0.92–0.96 for the three models whose coverage drops. That includes the two models whose risk stays below α,
+and both label-free monitors false-alarm at 0.08–0.24 on the null stream. distil6's in-domain held-out violation (0.14) is
+above δ. With 50 splits its standard error is about 0.042 (derived: √(0.1 · 0.9 / 50)), so it is within about one SE of δ:
+the finite-test noise of held-out mode seen in 6c, not a population-mode failure (10a: 0.060).
 
 **Verdict: replicates H6c (Mixed), and adds the first real case where auditing works.** Where the excess risk is large
-and coverage is high (distil6), the audit martingale detects the shift at roughly Prop 2's rate. Where coverage is low
-(p70ft), it does not, which is also Prop 2's prediction.
+and coverage is high (distil6), the audit martingale detects the shift, at about 1.8× Prop 2's D (pre-change drift). Where
+coverage is low (p70ft), it does not, which is Prop 2's prediction.
 
 #### 10d — Streaming policy on the real shift (replication of H6d)
 
@@ -1087,9 +1094,11 @@ and coverage is high (distil6), the audit martingale detects the shift at roughl
 **Explanation and verdict: replicates H6d (Mixed).** For distil6, monitoring works as intended. Each run recalibrates
 about once, and the last 1 000 shifted inputs come back within α at a 20 % budget (0.022). That costs 0.900 of L, and
 1.185 when C is charged on every input. q4ft stays within α with no monitoring at all, at 0.543, because its
-certificate already defers a third of the stream. So once more, the cheapest *valid* deployment under shift is not the
-in-domain favourite. For p70ft the excess risk is detectable in principle (r = 0.086), but audits cannot find it in time at
-37 % coverage, and every policy stays at 0.081–0.089 on the last 1 000 inputs.
+certificate already defers a third of the stream. Under certified cost, the in-domain winner (q4ft, 10a) is also the cheapest
+policy that stays within α under shift (last-1 000 risk 0.046 at cost 0.543). The model with the best in-domain *agreement*
+(distil6) needs 20 % audits and cost 0.900 to get there. So the ranking by agreement does not survive the shift, but the
+ranking by certified cost does, here. For p70ft the excess risk is detectable in principle (r = 0.086), but audits cannot find it in time at
+37 % coverage, and every certified policy stays at 0.081–0.089 on the last 1 000 inputs (always-C: 0.252).
 
 ![](results/real/exp10_real_models.png)
 
@@ -1147,7 +1156,7 @@ higher on the later stream than on calibration.
 | p50ft | 0.047 / 0.938 / 0.636 | 0.067 / 0.926 / 0.641 | 0.427 / 0.961 / 0.627 |
 
 Over all 54 cells per certifier, the maximum violation is 0.073 (same mode) and 0.067 (split mode). Naive reaches
-0.54. At α = 0.05 no certifier violates anything (coverage ≥ 0.986 at n = 1000). Every model's unconditional disagreement
+0.54. At α = 0.05 no certifier violates anything (same-mode coverage ≥ 0.986 at n = 1000; split ≥ 0.980). Every model's unconditional disagreement
 on `civil_cal` is below 0.05, so serving everything is already safe. Split mode is infeasible at n = 200 for α ≤ 0.02,
 because n < 2·m<sub>0</sub> (§1.4 step 1). At n = 500 and α = 0.01 the start index falls back to the last grid point,
 because the required 460 test points exceed n<sub>T</sub> = 350 (derived). The certificate is then feasible only if none
@@ -1183,8 +1192,8 @@ The maximum group-certificate violation over all 54 (model, group) cells is 0.07
 cells. A group's served risk is then essentially its unconditional disagreement, and the marginal certificate fails exactly
 on the groups whose flip rate exceeds α. That rate is 2–5× that of comments with no identity mention (p50: black 0.120,
 white 0.118, against none 0.035; distil6: white 0.066, against 0.018). The failing groups differ from HateXplain. Here they
-are the *race* identities: black or white fails for all five lossy compressions. LGBTQ and muslim fail for
-the pruned models. It is the same structural failure as Exp 6b: a threshold tuned on a mixture dominated by
+are the *race* identities: black or white fails for all five lossy compressions. LGBTQ also fails for p50 and p50ft, and muslim for p50 only (p30 fails
+only on black). It is the same structural failure as Exp 6b: a threshold tuned on a mixture dominated by
 "none" (59 %) is too loose for the identity groups. The group certificate repairs every cell (≤ 0.073). Its price falls on
 the small groups: LGBTQ draws hold about 47 points, just above m<sub>0</sub> = 45, so the certificate is often infeasible
 there (feasible 0.10–0.64 across models), and LGBTQ coverage is 0.085–0.63. other_religions draws hold about 28 points
@@ -1217,9 +1226,24 @@ unconditional disagreement below α, the walk reaches the bottom of the grid. Fo
 0.5002, the minimum of the binary max-probability. The temporal study at α = 0.05 is therefore a study of unconditional
 flip rates.
 
-*There is a drift, but it is small.* Q4 is the highest quarter for five of the six models, and every model's stream
-disagreement exceeds its calibration disagreement (11.0). But the Q1 → Q4 increase is ≤ 0.012, the series is not monotone
-(Q2 is below Q1 for five models), and the Q1 and Q4 intervals overlap for every model. The only quarter above α is p50's Q4
+*There is a consistent upward drift, but it is not significant.* Q4 is the highest quarter for five of the six models, and
+every model's stream disagreement exceeds its calibration disagreement (11.0). The series is not monotone (Q2 is below Q1
+for five models). Two-proportion z-tests of Q1 against Q4 (derived from `n_served`, `k_served`; pooled rate p̂,
+z = (k<sub>4</sub>/n<sub>4</sub> − k<sub>1</sub>/n<sub>1</sub>) / √(p̂(1−p̂)(1/n<sub>1</sub> + 1/n<sub>4</sub>)), two-sided):
+
+| model | Q1 k / n | Q4 k / n | z | raw p | Bonferroni p (× 6) |
+|---|---|---|---|---|---|
+| p50ft | 45 / 2000 | 69 / 2000 | 2.28 | 0.023 | 0.135 |
+| distil6 | 48 / 2000 | 63 / 2000 | 1.44 | 0.149 | 0.89 |
+| p50 | 99 / 2000 | 115 / 2000 | 1.12 | 0.261 | 1 |
+| p30 | 36 / 2000 | 42 / 1999 | 0.69 | 0.491 | 1 |
+| q4 | 43 / 2000 | 48 / 2000 | 0.53 | 0.596 | 1 |
+| q8 | 3 / 2000 | 2 / 2000 | −0.45 | 0.655 | 1 |
+
+For example, p50ft: p̂ = 114 / 4000 = 0.0285, SE = √(0.0285 · 0.9715 · 2/2000) = 0.00526, z = 0.012 / 0.00526 = 2.28. Only
+p50ft is nominally significant, and none is after Bonferroni. The six tests are positively correlated, because the models
+are scored on one shared comment sequence, so Bonferroni is conservative. A consistent direction across correlated models is
+weaker evidence than six independent tests would be. The only quarter above α is p50's Q4
 (0.0575). Its interval contains α, and it is about 1.5 standard errors above it (derived: (0.0575 − 0.05) /
 √(0.05 · 0.95 / 2000) = 1.54). With four time points and a single 2 000-comment sample per quarter, this is not evidence of a
 breach.
@@ -1251,11 +1275,11 @@ identical across seeds; `exp11d_runs.csv`). What it detects is that later commen
 is a covariate-shift alarm with no bearing on the certified risk. CUSUM never fires, because at coverage 1 the deferral
 rate it watches is constant at 0.
 
-**Verdict (H11b): Not supported.** *Drift:* the direction is upward (Q4 is the highest quarter for 5 of 6 models), but the
-size (≤ 0.012) is within the quarterly confidence intervals, and only one model-quarter crosses α, within noise. *Detection:*
-no monitor detects anything, and Prop 2 predicts exactly that (D = ∞, every risk in or below the blind zone). The theory's
-prediction holds. The hypothesis that detection would happen at a *finite* delay of about D is not testable on this
-stream. Four quarters, from a single year, are too short a horizon for a real temporal test (§5).
+**Verdict (H11b): Inconclusive.** *Drift:* small and consistently upward (Q4 is the highest quarter for 5 of 6 models, and
+the stream disagreement exceeds the calibration disagreement for all 6), but not significant after multiplicity correction
+(smallest Bonferroni p = 0.135, p50ft). Only one model-quarter crosses α, within noise. *Detection:* this half is not
+testable. Every risk is in or below the blind zone, so Prop 2 gives D = ∞, and no monitor detects anything, which matches
+that prediction. Whether detection happens at a *finite* delay of about D cannot be checked on this stream. Four quarters, from a single year, are too short a horizon for a real temporal test (§5).
 
 #### 11e — Streaming policy (check of H6d)
 
@@ -1304,7 +1328,7 @@ recalibrations (≤ 0.20 per run) move the Q4 risk by 0.003 at most. The adaptiv
   dedicated kernels. Free-deferral cost flatters every model; the cascade cost is the conservative figure.
 * **Population mode certifies the pool, not the world.** 6a/6b/8c (and 10a/10b, 11a/11b) are exact for the empirical distribution of 3 846
   posts (15 000 comments for Exp 11). Generalisation from that pool to new HateXplain-like posts is exactly the held-out setting (6c in-domain column),
-  where finite-test noise shows up as violation 0.08–0.12 over 50 splits. Population mode is also outside Theorem 1(b):
+  where finite-test noise shows up as violation 0.08–0.14 over 50 splits (6c, 10c). Population mode is also outside Theorem 1(b):
   bootstrap ties (about 12 % repeats at n = 1 000) violate (C), and the pool's jagged empirical η means (M) is not guaranteed.
   Its same-mode validity results are empirical. The split-mode results (Exp 9, Exp 11a `certified_split`) are covered by
   Theorem 1′.
@@ -1348,8 +1372,9 @@ recalibrations (≤ 0.20 per run) move the Q4 risk by 0.003 at most. The adaptiv
    pre-change drift.
 4. **Temporal drift on real data — started, inconclusive.** Exp 11 ran the full protocol on time-ordered CivilComments, but
    the post-training stream covers only 2017 Q1–Q4, and the drift there (≤ 0.012) is below what four 2 000-comment quarters
-   can resolve. A multi-year corpus is still needed. The lesson that robustness to shift complicates the in-domain ranking of
-   compressions (6d) held again on the cross-platform shift in Exp 10d: distil6 is the best in-domain and the worst on Davidson.
+   can resolve. A multi-year corpus is still needed. On the cross-platform shift in Exp 10d, the model with the highest in-domain
+   agreement (distil6) has the highest certified risk on Davidson, while the cheapest in-domain model by certified cost (q4ft)
+   stays valid at the lowest cost. Which in-domain ranking survives a shift depends on the metric.
 5. **Deliverable — open.** A `trustcert` library (certify, audit, recalibrate) plus an evaluation protocol: *report
    certified coverage at (α, δ), per group, not agreement*. Packaging should wait until items 1 and 3 settle.
 

@@ -81,7 +81,16 @@ class SelectiveCertificate:
     delta : failure probability of the certificate
     n_grid: number of candidate thresholds (quantiles of calibration scores)
     min_accept: minimum number of accepted calibration points for a lambda to
-                be considered (avoids vacuous tiny subsets)
+                be considered (avoids vacuous tiny subsets); raised to
+                ceil(log(delta)/log(1-alpha)) if smaller (m0 in theory.md)
+    mode  : "same" (default) -- grid from quantiles of the calibration scores and
+            the skip rule (Theorem 1(b), valid under (C) + (M)); "split" -- Theorem 1'
+            (docs/theory.md section 1.4): grid and start index from a design part,
+            fixed-sequence test with no skip rule on the rest; valid with no
+            continuity / monotonicity assumption; needs n >= 2*m0
+    design_frac: (split mode) fraction of the calibration set used as the design
+            part (default 0.3)
+    seed  : (split mode) seed of the data-independent design/test permutation
     """
 
     def __init__(self, alpha=0.05, delta=0.1, n_grid=200, min_accept=20,

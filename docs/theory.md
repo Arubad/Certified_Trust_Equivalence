@@ -287,7 +287,7 @@ Taking expectations over $\mathcal D$ gives the theorem. $\square$
 * *Infeasible outcomes are safe.* `lam = inf` (from step 1, step 2, or $p_{j_0} > \delta$)
   serves nothing and is never an error.
 
-**Coverage cost (prediction, to be checked by Task 2).** With the $2m_0$ start margin, the
+**Coverage cost (prediction, checked in Exp 9).** With the $2m_0$ start margin, the
 split procedure on $n$ points should behave roughly like the same-data procedure on
 $n_T = (1-f)n = 0.7n$ points. The stopping rule's empirical-risk slack is about
 $z_{1-\delta}\sqrt{\alpha(1-\alpha)/(n_T\,\varphi)}$, which is $\propto 1/\sqrt{n_T}$ instead of
@@ -490,7 +490,7 @@ $\le \delta$ with $\delta/|\mathcal G|$.
 **Setting.** The monitor runs on stream index $t$. Let $\sigma_t = \mathbf 1\{s_t \ge \hat\lambda\}$
 (served) and $A_t \in \{0,1\}$ (audit coin). Let
 $\mathcal F_t = \sigma\big(s_{1:t}, \sigma_{1:t}, A_{1:t}, (A_i\sigma_i d_i)_{i \le t}, U\big)$,
-where $U$ is any external randomness. The implemented rule (Task 3) is:
+where $U$ is any external randomness. The implemented rule (`AdaptiveAuditMartingale`, Exp 7) is:
 
 1. the rate $b_t \in [0,1]$ is computed from the KS window over $s_{1:t-1}$ and other
    $\mathcal F_{t-1}$ data;

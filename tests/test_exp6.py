@@ -92,6 +92,9 @@ def test_overview_excludes_no_majority():
 def test_population_violation_zero_when_d_independent():
     # pool where d is independent of s with rate 0.02 < alpha = 0.05:
     # population-mode violation must be 0 in every split (i.i.d. draws with replacement)
+    # Smoke check of population_eval (risk/coverage computed exactly on the pool): every lambda has
+    # population risk about 0.02 < alpha, so a violation could only come from a population_eval bug.
+    # It is not a power or validity test of the certificate.
     rng = np.random.default_rng(0)
     N = 20000
     s = rng.uniform(0, 1, N)
