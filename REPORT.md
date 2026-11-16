@@ -1,7 +1,7 @@
 # Certified Trust-Equivalence: Guaranteeing, Not Just Measuring, Agreement Between Compressed and Large Models
 
-*Research report. Every number below is read from a CSV in `results/` (synthetic Exp 1–5, 7, 8)
-or `results/real/` (Exp 6, and the real-data parts of Exp 7–8), and each table names its file.
+*Research report. Every number below is read from a CSV in `results/` (synthetic Exp 1–5, 7, 8, and Exp 9)
+or `results/real/` (Exp 6, 10, 11, and the real-data parts of Exp 7–8), and each table names its file.
 Numbers marked "derived" are arithmetic on CSV values, and the arithmetic is shown. Synthetic runs use
 3 teacher seeds and 100–300 random calibration draws per cell where stated.*
 
@@ -27,6 +27,10 @@ docstrings). The verdict is against the CSVs.
 | H8a | Prop 2's delay formula D(r) predicts the simulated delay to within [0.7, 1.6] | ratio 0.856–1.058 over 20 (r, b) cells | **Supported** |
 | H8c | Per-group δ gives simultaneous failure ≤ 1−(1−δ)^G (Šidák bound); δ/G gives ≤ δ | 0.02–0.197 (0.12–0.197 for int8/q4/p30) ≤ 0.469; 0.000–0.027 ≤ 0.10 | **Supported** |
 | T1c | No λ can be certified below n = ⌈log δ / log(1−α)⌉ (230 at α = 0.01) | n_cal = 200, α = 0.01: feasible = 0.00 for all six real models | **Supported** |
+| H9 | Split mode (Theorem 1′) stays valid where same mode's assumptions fail, at a small coverage cost | split max violation 0.090 over 53 cells, incl. bootstrap population mode; coverage loss ≤ 0.02 in 40 of 53 cells, but 0.27–0.39 on the small 6b groups | **Supported (qualified)**: valid and proven; the cost is small only with ample calibration data |
+| H10 | Fine-tuned / distilled compressions sit in the certifiable middle ground, and certified cost ranks them differently from accuracy | α = 0.05: coverage 0.61–0.93, cost 0.50–0.74 (one-shot p50/p70: 0.95–1.00); accuracy ranks p50ft first, certified cost ranks it last | **Supported** |
+| H11a | The Exp 6b group failure replicates on CivilComments | marginal violation 0.99–1.00 on black / white (all 5 lossy models), LGBTQ, muslim; group certificate ≤ 0.073 | **Supported** |
+| H11b | Risk drifts upward over time, and audits detect it at about Prop 2's delay | Q1 → Q4 rise ≤ 0.012, inside the CIs; one quarter above α (p50 Q4 0.0575, CI [0.048, 0.069]); every risk in or below the blind zone, so D = ∞; detection 0 | **Not supported** (drift within noise; Prop 2's D = ∞ holds) |
 
 ---
 
@@ -101,6 +105,19 @@ accuracy–cost; we optimise cost subject to a trust guarantee.
    every fixed budget, including 20 % (rotation: median delay 199.5–386 vs 305–1 246), at 1.00–1.21× the
    in-control audit cost of a fixed 2 % budget, in a protocol with 1 500 in-control inputs before the change. Its
    remaining cost is extra audits on score shifts that do not matter.
+7. **An assumption-free certificate, implemented** (Theorem 1′, `mode="split"`, Exp 9). The design part sets the grid and
+   start index, and the test part runs the test. Validity then needs no continuity or monotonicity, and it covers bootstrap
+   population mode. Its maximum violation is 0.090 over 53 cells. The price is small with ample calibration data (≤ 0.02 coverage
+   in 40 of 53 cells), but large for small groups (int8 Homosexual 0.287 → 0.000).
+8. **Fine-tuned and distilled compressions** (Exp 10, one free-tier T4 job of 9 GPU-minutes). Fine-tuning lifts 50/70 %
+   pruning from uncertifiable (cost 0.95–1.00) to cost 0.67–0.74. But label-trained compressions are *more accurate* than L
+   (0.688–0.699 vs 0.679) while disagreeing with it on 12–17 % of posts, and certified cost ranks them in a different order
+   from accuracy (accuracy's best, p50ft, is the costliest). The KD student is the most faithful model in-domain (0.933)
+   but the most voided on Davidson (risk 0.155). It is also the first real case where the audit martingale detects a
+   shift (0.70 at 10 %), as Prop 2 predicts for a risk outside the blind zone.
+9. **A second dataset, CivilComments** (Exp 11, 32 GPU-minutes). The group failure replicates, on the race identities
+   (black / white) rather than sexual orientation. The temporal stream (2017 Q1–Q4) shows only a sub-noise upward drift,
+   which no monitor detects, exactly as Prop 2's blind zone predicts.
 
 ## 3. Method
 
@@ -149,6 +166,17 @@ stream is 6 000 Davidson et al. (2017) tweets, a different platform with a diffe
 scheme and the same three labels. Inference ran once on a 2-core CPU Colab VM and wrote
 `results/real/real_preds.npz`; all analysis is local (`experiments/real/exp6_real_models.py`).
 
+**Trained compressions (Exp 10).** GPU job A (`experiments/real/colab_train_hx.py`, free-tier Colab T4) trains four
+compressions of the same L on the HateXplain train split. **distil6** is a DistilBERT student, distilled from L's soft labels.
+**p50ft / p70ft** are 50 / 70 % magnitude pruning plus masked fine-tuning on the gold labels. **q4ft** is 4-bit
+quantisation-aware fine-tuning on the gold labels. It writes `results/real/real_preds_ft.npz` on exactly the Exp 6 eval
+rows, and the Exp 6 analysis runs on it unchanged (`exp6_real_models.py --npz ... --tag exp10`).
+
+**CivilComments (Exp 11).** GPU job B (`experiments/real/colab_civil.py`) fine-tunes a BERT-base L on 60 000 comments from
+the earliest 40 % of CivilComments. It calibrates on 15 000 other comments from that period, and streams 8 000 later
+comments in time order (2 000 per quarter, 2017 Q1–Q4). The compressions are q8 / q4, p30 / p50, distil6 and p50ft. The
+groups are the 8 WILDS identities, assigned by first match with minorities first. Analysis: `experiments/real/exp11_civil.py`.
+
 **Cost measures (real models).** *size* is the parameter-memory ratio to L. It is idealised for
 q4/q3 (packed weights are assumed) and for pruning (sparse-index overhead is ignored). *latency* was
 measured on CPU, but only int8 has a real speed-up (0.573× L). The fake-quantised and pruned models run as
@@ -176,9 +204,15 @@ few upticks among the high-margin bins), so (M) is not guaranteed either. The po
   that procedure the guarantee is proven only under **(C)** continuous scores (no ties) and **(M)** a
   single crossing of R(λ) through α (implied by a disagreement rate that is non-increasing in margin).
   No proof or counterexample without (M) was found, and a simulation on non-monotone η gave 0.3–5.3 %
-  violation. **Recommended fix** (not yet in the code): build the grid from a held-out split or a fixed
+  violation. **Recommended fix**: build the grid from a held-out split or a fixed
   lattice, and choose the start index from that split instead of the data-dependent skip. Then (a) applies
   verbatim. (c) At least ⌈log δ / log(1−α)⌉ calibration points are necessary.
+* **Theorem 1′ (split-grid certificate, `docs/theory.md` §1.4).** The fix, now implemented as
+  `SelectiveCertificate(mode="split")`, with the default `mode="same"` unchanged. A fixed random 30 % design part sets the
+  grid and the start index (the first λ whose rescaled design count is ≥ 2·m<sub>0</sub>), and the other 70 % runs the
+  fixed-sequence test with no skip rule. Then P(R(λ̂) ≤ α) ≥ 1−δ for every law P, with no (C), (M) or no-ties assumption.
+  Bootstrap-then-split in population mode is covered exactly with respect to the pool law. The 2·m<sub>0</sub> start
+  margin is for power only: any start index computed from the design part is valid. It needs n ≥ 2·m<sub>0</sub>.
 * **Proposition 2 (audit delay).** With post-change disagreement rate r, budget b and coverage c,
   E[delay] ≈ D(r) = (log(1/δ) + log|Q|) / (b·c·max<sub>q</sub> KL<sub>q</sub>(r)). Delay is
   infinite in a **blind zone** α < r ≤ 0.072 (for α = 0.05 and Q = {2α, 4α}), where no mixture
@@ -804,21 +838,479 @@ confidence level can repair a certificate that conditions on the wrong populatio
 
 **Verdict: Supported.**
 
+### Exp 9 — Split-grid certificate, Theorem 1′ (`experiments/exp9_split_certificate.py`)
+
+**Hypothesis (H9).** Split mode stays valid where same mode's assumptions fail, at a small coverage cost.
+
+**Setup.** `SelectiveCertificate(mode="split", design_frac=0.3, seed=0)` implements `docs/theory.md` §1.4. A fixed
+random 30 % of the calibration points (the design part) sets the λ grid and the start index. The other 70 % (the test
+part) runs the fixed-sequence binomial test with no skip rule. The walk starts at the first grid point whose design
+count, rescaled to the test size, is at least 2·m<sub>0</sub>, with m<sub>0</sub> = ⌈log δ / log(1−α)⌉ (45, 114 and 230
+at α = 0.05, 0.02 and 0.01). *Ruling, disclosed:* the plan specified a start at m<sub>0</sub>. §1.4 uses 2·m<sub>0</sub>,
+because a start at m<sub>0</sub> ends infeasible in roughly half of all runs. This margin affects power only; the proof
+of Theorem 1′ holds for any start index computed from the design part. `mode="same"` is unchanged, and its rows in the
+CSV reproduce the certified rows of Exp 1, 6a and 6b. There are three settings, all with δ = 0.10:
+(a) the Exp 1 setting (digits and toxic, 7 compressions, 3 teacher seeds × 200 splits, α = 0.05, n<sub>cal</sub> ∈
+{200, 400, 1000}). Digits at n<sub>cal</sub> = 1000 is skipped because the digits pool has only 899 rows.
+(b) HateXplain population mode as in Exp 6a (int8 / q4 / p30, α ∈ {0.02, 0.05}, n<sub>cal</sub> ∈ {500, 1000},
+300 bootstrap draws). This is the setting where same mode's assumptions fail: bootstrap ties break (C), and the jagged
+empirical η does not guarantee (M) (§3).
+(c) the Exp 6b group certificate (int8, α = 0.05, n<sub>cal</sub> = 2000, 300 draws).
+`tests/test_certify.py` adds two non-monotone-η checks of split mode. The plan's η has risk 0.3 at the top of the score
+range, so R(λ) > α at the first hypothesis and *any* high-to-low fixed sequence stops there. Feasibility is therefore
+impossible by construction, and that test asserts validity only (violation ≤ 0.13). A second η with a safe top (0 on
+[0.6, 1], 0.4 on [0.5, 0.6), 0 on [0.3, 0.5), 0.2 below) carries the feasibility assertion (feasible ≥ 0.5,
+violation ≤ 0.13).
+
+**Results** (`results/exp9_split_certificate.csv`; violation / coverage, with the feasible rate in brackets when it is below 0.995):
+
+| setting | model | α | n<sub>cal</sub> | same | split |
+|---|---|---|---|---|---|
+| digits | prune80 | 0.05 | 200 | 0.042 / 0.866 | 0.027 / 0.755 (0.84) |
+| digits | prune80 | 0.05 | 400 | 0.090 / 0.908 | 0.063 / 0.892 |
+| digits | prune90 | 0.05 | 200 | 0.050 / 0.268 (0.67) | 0.007 / **0.006** (0.01) |
+| digits | prune90 | 0.05 | 400 | 0.092 / 0.323 (0.77) | 0.067 / 0.284 (0.63) |
+| digits | pruneFT90 | 0.05 | 200 / 400 | 0.062 / 0.957; 0.095 / 0.973 | 0.042 / 0.941; 0.072 / 0.964 |
+| digits | quant3b, quant4b, distill25 | 0.05 | 200 / 400 | ≤ 0.005 / 0.974–0.998 | ≤ 0.005 / 0.954–0.991 |
+| toxic | all 7 | 0.05 | 200 / 400 / 1000 | 0.000 / ≥ 0.994 | 0.000 / ≥ 0.982 (≥ 0.996 at n = 1000) |
+| HateXplain | int8 | 0.02 | 500 | 0.060 / 0.472 (0.95) | 0.023 / **0.199** (0.29) |
+| HateXplain | int8 | 0.02 | 1000 | 0.073 / 0.620 | 0.057 / 0.542 (0.84) |
+| HateXplain | int8 | 0.05 | 500 / 1000 | 0.090 / 0.840; 0.067 / 0.861 | 0.077 / 0.812 (0.99); **0.090** / 0.851 |
+| HateXplain | q4 | 0.02 | 500 / 1000 | 0.060 / 0.848; 0.053 / 0.882 | 0.043 / 0.760 (0.91); 0.063 / 0.870 |
+| HateXplain | q4 | 0.05 | 500 / 1000 | 0.000 / 0.969; 0.000 / 0.977 | 0.000 / 0.959; 0.000 / 0.971 |
+| HateXplain | p30 | 0.02 | 500 / 1000 | 0.047 / 0.724; 0.060 / 0.818 | 0.057 / 0.647 (0.84); 0.077 / 0.801 |
+| HateXplain | p30 | 0.05 | 500 / 1000 | 0.057 / 0.928; 0.057 / 0.940 | 0.060 / 0.915; 0.067 / 0.930 |
+| 6b group | African (625) | 0.05 | 2000 | 0.047 / 0.889 | 0.040 / 0.865 |
+| 6b group | Islam (374) | 0.05 | 2000 | 0.063 / 0.779 | 0.077 / 0.567 (0.71) |
+| 6b group | Jewish (311) | 0.05 | 2000 | 0.000 / 0.865 | 0.000 / 0.529 (0.59) |
+| 6b group | **Homosexual** (295) | 0.05 | 2000 | 0.013 / 0.287 (0.75) | 0.000 / **0.000** (0.00) |
+| 6b group | **Women** (214) | 0.05 | 2000 | 0.033 / 0.391 (0.61) | 0.003 / **0.003** (0.003) |
+| 6b group | other (2027) | 0.05 | 2000 | 0.067 / 0.868 | 0.077 / 0.855 |
+
+(Group pool sizes are in brackets.) Over all 53 (setting, model, α, n<sub>cal</sub>) cells, the maximum violation is
+**0.090** for split (HateXplain int8, α = 0.05, n = 1000) and 0.095 for same (digits pruneFT90, n = 400). The coverage
+loss (same − split, derived) is ≤ 0.020 in 40 of the 53 cells and above 0.07 in 10.
+
+**Explanation.** *Validity.* Split mode is never above δ, and now this is a theorem (Theorem 1′), not only an
+observation. §1.4 shows that bootstrap-then-split is covered exactly with respect to the pool law that population mode
+evaluates. But same mode also never exceeded δ in this grid (max 0.095). So Exp 9 does not show a same-mode failure that
+split repairs. What it does is replace an empirical validity result with a proven one. In some cells split's violation is
+higher than same's (int8 α = 0.05, n = 1000: 0.090 vs 0.067). Both are level-δ procedures, and the difference is within
+Monte-Carlo error: with 300 draws the standard error at 0.09 is about 0.017 (derived: √(0.09 · 0.91 / 300)).
+
+*Cost: two regimes.* When many calibration points are accepted near the start of the walk, the split costs at most 2
+coverage points. Examples are toxic at every n (≤ 0.013), the real models at α = 0.05 and n = 1000 (0.006–0.010), and
+digits pruneFT90 (≤ 0.017). When few points are accepted, the split is expensive or infeasible: digits prune90 at
+n = 200 (0.268 → 0.006), int8 at α = 0.02 and n = 500 (0.472 → 0.199), and the small 6b groups. The mechanism is the 2·m<sub>0</sub> start
+on only 70 % of the data. Take int8's Homosexual group. A draw of n<sub>cal</sub> = 2000 holds about 153 of its posts
+(derived: 2000 × 295 / 3 846), so n<sub>D</sub> ≈ 45 and n<sub>T</sub> ≈ 108. The start must then accept at least
+90 / 108 ≈ 83 % of the group (derived). Same mode certifies only 29 % coverage for this group, so the first tested λ is a
+true null, the walk stops, and the certificate is infeasible. The same arithmetic at α = 0.02 (start at ≥ 228 expected
+test points) explains the int8 n = 500 cell.
+
+**Verdict: Supported (qualified).** "Stays valid" is supported: max violation 0.090 ≤ δ, including the bootstrap setting
+that breaks same mode's assumptions, and the guarantee is now proven. "At a small coverage cost" holds when the
+calibration set is large relative to 2·m<sub>0</sub>/φ. It is refuted for small n, small α and small groups, where split
+loses 0.27–0.39 coverage (Homosexual, Women, Jewish) or all of it. Same mode never failed here, so the measured benefit of
+split is the proof, not a repaired violation.
+
+### Exp 10 — Fine-tuned and distilled BERT compressions (`experiments/real/colab_train_hx.py`, `exp6_real_models.py --npz`)
+
+All Exp 10 numbers come from `results/real/exp10_*.csv`. They are produced by running the Exp 6 analysis on
+`results/real/real_preds_ft.npz`
+(`python experiments/real/exp6_real_models.py --npz results/real/real_preds_ft.npz --models distil6,p50ft,p70ft,q4ft --tag exp10`).
+δ = 0.10 throughout. Settings (draws, splits, streams) are those of Exp 6a–6d.
+
+**Hypothesis (H10).** Fine-tuned / distilled compressions sit in the certifiable middle ground, and certified cost ranks
+them differently from accuracy. 10b–10d have no new hypothesis. They test whether H6b–H6d replicate on the trained
+compressions.
+
+**Setup.** GPU job A (free-tier Colab T4, fp16 autocast) trained four compressions of the same L as Exp 6, using
+HateXplain *train* posts only. The training ids are asserted disjoint from the val+test ids used for evaluation.
+**distil6**: a DistilBERT-base student (6 layers), trained by pure knowledge distillation to L's soft labels (T = 2,
+3 epochs). **p50ft / p70ft**: L with 50 / 70 % global magnitude pruning of the encoder Linears, then 2 epochs of
+masked fine-tuning on the *gold labels* (measured sparsity 0.500 / 0.700). **q4ft**: 1 epoch of quantisation-aware
+fine-tuning of L on the gold labels (4-bit straight-through estimator), then weights quantised to 4 bits. The eval
+rows are exactly those of `real_preds.npz` (y, split and groups asserted identical). L was recomputed on the T4. Its
+argmax agrees with the CPU L of Exp 6 on **1.0000** of the 3 846 HateXplain rows and 0.9997 of the Davidson rows
+(`results/real/exp10_L_check.csv`, threshold 0.995), so the GPU L is used. *Latency* is compared only inside the T4 fp16
+run, and only for a model with a real speed-up: distil6 runs at 0.428× L (`exp10_overview.csv`). It is never compared with
+Exp 6's CPU timings. The pruned and fake-quantised models run dense, so they get "—". *Leakage:* 7 exact duplicate texts
+occur in both the fine-tuning set and the eval rows (`train_eval_dup_texts` in the npz meta). They were not removed.
+
+#### 10.0 Overview
+
+**Results** (`results/real/exp10_overview.csv`; "dis" = 1 − agree, derived; Exp 6 rows from `exp6_overview.csv` for comparison):
+
+| model | size | latency (× L, T4) | acc HX | agree HX | dis HX | acc Davidson | agree Davidson |
+|---|---|---|---|---|---|---|---|
+| L | 1.000 | 1.000 | 0.679 | 1.000 | 0.000 | 0.6165 | 1.000 |
+| distil6 | 0.612 | **0.428** | 0.683 | **0.933** | 0.067 | **0.704** | 0.820 |
+| p50ft | 0.612 | — | **0.699** | 0.869 | 0.131 | 0.541 | 0.8385 |
+| p70ft | 0.457 | — | 0.688 | 0.827 | 0.173 | 0.480 | 0.742 |
+| q4ft | 0.321 | — | 0.694 | 0.880 | 0.120 | 0.501 | 0.833 |
+| *Exp 6: p50 (one-shot)* | 0.612 | — | 0.633 | 0.758 | 0.242 | 0.351 | 0.666 |
+| *Exp 6: p70 (one-shot)* | 0.457 | — | 0.423 | 0.439 | 0.561 | 0.203 | 0.509 |
+| *Exp 6: q4 (one-shot)* | 0.321 | — | 0.684 | 0.951 | 0.049 | 0.535 | 0.883 |
+
+Fine-tuning repairs pruning's accuracy: p70 goes from 0.423 to 0.688, above L's 0.679. It also *raises* accuracy above
+L for all three label-trained models (0.688–0.699). Yet all four trained models disagree with L more than one-shot q4
+does (0.067–0.173 vs 0.049). The three label-trained models disagree on 12–17 % of posts *while being more accurate
+than L*. This is the Rai & Awekar point in its sharpest form: training a compression towards the labels makes it a
+*different* model, not a more faithful copy. The KD student, trained towards L, is the most faithful of the four (0.933).
+
+#### 10a — Validity and certified cost
+
+**Results** (`results/real/exp10a_summary.csv`, n<sub>cal</sub> = 1000, population mode; "cost (latency)" is within the T4 run):
+
+| model | α | feasible | **certified**: violation / coverage / risk | naive violation | marginal CP bound | cost (size) | cost (latency) | cost (cascade) |
+|---|---|---|---|---|---|---|---|---|
+| distil6 | 0.01 | 1.00 | **0.047** / 0.529 / 0.004 | 0.513 | 0.079 | 0.794 | 0.698 | 1.082 |
+| distil6 | 0.02 | 1.00 | **0.060** / 0.749 / 0.013 | 0.500 | 0.079 | 0.709 | 0.572 | 0.862 |
+| distil6 | 0.05 | 1.00 | **0.060** / 0.929 / 0.040 | 0.450 | 0.079 | 0.639 | **0.469** | 0.683 |
+| p50ft | 0.01 | 0.78 | **0.033** / 0.348 / 0.003 | 0.507 | 0.146 | 0.865 | — | 1.264 |
+| p50ft | 0.02 | 1.00 | **0.063** / 0.528 / 0.011 | 0.503 | 0.146 | 0.795 | — | 1.084 |
+| p50ft | 0.05 | 1.00 | **0.087** / 0.674 / 0.038 | 0.487 | 0.146 | 0.739 | — | 0.938 |
+| p70ft | 0.01 | 0.99 | **0.030** / 0.302 / 0.002 | 0.397 | 0.190 | 0.836 | — | 1.155 |
+| p70ft | 0.02 | 1.00 | **0.043** / 0.418 / 0.009 | 0.447 | 0.190 | 0.773 | — | 1.039 |
+| p70ft | 0.05 | 1.00 | **0.063** / 0.611 / 0.037 | 0.450 | 0.190 | 0.668 | — | 0.846 |
+| q4ft | 0.01 | 1.00 | **0.033** / 0.457 / 0.003 | 0.440 | 0.134 | 0.690 | — | 0.864 |
+| q4ft | 0.02 | 1.00 | **0.043** / 0.567 / 0.012 | 0.460 | 0.134 | 0.615 | — | 0.754 |
+| q4ft | 0.05 | 1.00 | **0.077** / 0.743 / 0.039 | 0.457 | 0.134 | **0.495** | — | 0.578 |
+
+Over all 36 certified cells (4 models × 3 α × 3 n), the maximum violation is **0.093** (p50ft, α = 0.01, n = 500).
+Where the naive threshold is feasible, its violation is 0.36–0.53. At α = 0.01 and n = 200 every model is infeasible,
+as Theorem 1(c) requires.
+
+Model selection at n<sub>cal</sub> = 1000 (derived ranks; one-shot rows from `exp6a_summary.csv`):
+
+| model | acc HX (rank) | agree HX (rank) | cost (size) at α = 0.01 / 0.02 / 0.05 | rank by certified cost |
+|---|---|---|---|---|
+| p50ft | 0.699 (1) | 0.869 (3) | 0.865 / 0.795 / 0.739 | 4 |
+| q4ft | 0.694 (2) | 0.880 (2) | **0.690 / 0.615 / 0.495** | **1** |
+| p70ft | 0.688 (3) | 0.827 (4) | 0.836 / 0.773 / 0.668 | 3 |
+| distil6 | 0.683 (4) | 0.933 (1) | 0.794 / 0.709 / 0.639 | 2 |
+| *one-shot p50 / p70 / q4 (Exp 6)* | 0.633 / 0.423 / 0.684 | 0.758 / 0.439 / 0.951 | α = 0.05: 0.950 / 1.000 / 0.337 | — |
+
+**Explanation.** *Validity carries over.* The certificate only uses the margin and the disagreement bit, so how the
+compression was made does not matter. The violations (≤ 0.093) are in the same range as Exp 6a (≤ 0.090). The same
+caveat applies: same mode in population mode is outside Theorem 1(b), so these are empirical results, not proven ones.
+
+*The middle ground.* At α = 0.05 the four trained models are certified at 61–93 % coverage and cost 0.50–0.74. The
+one-shot p50 and p70 they replace were infeasible or served under 13 % (cost 0.95–1.00). Fine-tuning therefore moves
+aggressive pruning from "no better than L" into the usable range.
+
+*The ranking reverses.* Accuracy ranks p50ft first, and certified cost ranks it last, at every α. q4ft is the cheapest:
+its size (0.321) is smallest, and its coverage (0.743) is second-best. p70ft is cheaper than p50ft (0.668 vs 0.739)
+although it is more compressed and has lower coverage (0.611 vs 0.674). This is the same non-monotonicity as Exp 2, in
+the opposite direction: a smaller model that loses less coverage than it saves in size wins. Under the one *measured*
+cost, the ranking changes again. distil6's T4 latency cost is 0.469, lower than q4ft's size-based 0.495. q4ft has no
+measured speed-up, though, so this comparison is not like for like.
+
+*One caveat on the "middle ground".* Fine-tuning q4 made it worse in trust terms: one-shot q4 has dis 0.049 and cost
+0.337, against 0.120 and 0.495 for q4ft. QAT on gold labels moved the model away from L. It is in the middle ground
+because it left the cheap end, not because it climbed out of the infeasible one.
+
+**Verdict: Supported.** All four trained compressions are certifiable at intermediate coverage (0.61–0.93) and cost
+(0.50–0.74), between the training-free extremes. The certified-cost ranking (q4ft < distil6 < p70ft < p50ft at all three
+α) does not follow the accuracy ranking (p50ft > q4ft > p70ft > distil6). Accuracy's best model is the costliest, and its worst is the second cheapest.
+
+#### 10b — Group certificate (replication of H6b)
+
+**Results** (`results/real/exp10b_summary.csv`; α = 0.05, n<sub>cal</sub> = 2000, 300 draws, population mode; violation / coverage / risk):
+
+| model | group | unc. dis | marginal certificate | group certificate |
+|---|---|---|---|---|
+| distil6 | **Homosexual** | 0.105 | **1.000** / 0.898 / 0.073 | 0.027 / 0.468 / 0.015 |
+| distil6 | **Women** | 0.084 | **0.990** / 0.920 / 0.065 | 0.030 / 0.437 / 0.013 |
+| distil6 | **Islam** | 0.094 | **0.840** / 0.919 / 0.058 | 0.087 / 0.736 / 0.024 |
+| p50ft | **Homosexual** | 0.224 | **1.000** / 0.405 / 0.100 | 0.037 / 0.012 / 0.003 |
+| p50ft | **Jewish** | 0.164 | **0.977** / 0.713 / 0.065 | 0.057 / 0.645 / 0.019 |
+| p50ft | **Islam** | 0.198 | **0.953** / 0.662 / 0.061 | 0.040 / 0.516 / 0.018 |
+| p70ft | **Homosexual** | 0.329 | **1.000** / 0.278 / 0.138 | 0.000 / 0.000 / 0.000 |
+| p70ft | Women / Islam | 0.210 / 0.243 | 0.530 / 0.467 | 0.033 / 0.053 |
+| q4ft | **Homosexual** | 0.207 | **1.000** / 0.560 / 0.130 | 0.007 / 0.002 / 0.001 |
+| q4ft | **Jewish** | 0.154 | **0.877** / 0.762 / 0.068 | 0.033 / 0.667 / 0.020 |
+| q4ft | Islam | 0.190 | 0.370 / 0.701 / 0.051 | 0.037 / 0.601 / 0.020 |
+
+The maximum group-certificate violation over all 24 (model, group) cells is 0.090 (q4ft, African). The remaining marginal
+cells (African, other, and the groups not listed) are ≤ 0.067.
+
+**Explanation and verdict: replicates H6b.** The Homosexual group fails the marginal certificate in every draw for all
+four trained models, as it did for int8, q4 and p30. The label-trained models add a Jewish-group failure (0.877–0.977)
+that the one-shot models did not show. The repair is the same as before, and so is its price: the group certificate
+serves 0.2–47 % of Homosexual posts. For p70ft it serves nothing there, which is the correct refusal.
+
+#### 10c — Real shift HateXplain → Davidson (replication of H6c)
+
+**Results** (`results/real/exp10c_drift_risk.csv`, `results/real/exp10c_monitors.csv`; α = 0.05, 50 splits; monitors on 1 500 in-domain then 1 500 Davidson inputs; false alarm on a 3 000-input in-domain stream):
+
+| model | HX coverage / risk / P(risk > α) | Davidson coverage / risk / P(risk > α) | audit 2 / 5 / 10 %: detect (median delay) | Prop 2 D at 2 / 5 / 10 % (derived) | KS / CUSUM detect | audit false alarm |
+|---|---|---|---|---|---|---|
+| distil6 | 0.934 / 0.042 / 0.14 | 0.929 / **0.155** / **1.00** | 0.22 (1062) / 0.46 (832) / **0.70** (845) | 2 294 / 918 / 459 | 0.96 / 0.20 | 0.08–0.10 |
+| p70ft | 0.608 / 0.036 / 0.08 | 0.371 / **0.086** / **1.00** | 0.02 / 0.00 / 0.04 | 38 511 / 15 405 / 7 702 | 0.92 / 0.92 | 0.00–0.02 |
+| q4ft | 0.742 / 0.039 / 0.04 | 0.635 / 0.047 / 0.38 | 0.00 / 0.02 / 0.00 | ∞ (r < α) | 0.94 / 0.92 | 0.02–0.08 |
+| p50ft | 0.667 / 0.036 / 0.08 | 0.503 / 0.034 / 0.02 | 0.00 / 0.00 / 0.00 | ∞ (r < α) | 1.00 / 0.96 | 0.00–0.02 |
+
+D is `expected_audit_delay(r, 0.05, 0.1, b, coverage)`, with r and the coverage taken from the Davidson column.
+
+**Explanation.** The shift voids the certificate for distil6 (3.1× α) and p70ft (1.7× α). It does not void it for
+p50ft or q4ft: their Davidson coverage falls (0.667 → 0.503, 0.742 → 0.635), so deferral absorbs the shift. distil6 is the
+most faithful model in-domain and the worst on the shift. Its flips on Davidson sit at high margin, the same pattern as
+Exp 6's q4. distil6's r = 0.155 is far outside the blind zone, and here the audit martingale detects, as Prop 2 predicts:
+D = 459 at 10 %, against 0.70 detection at a median 845. The observed delay is longer than D for the reason given in
+§3.1 (pre-change negative drift of log M). At 5 % and 2 % the medians (832, 1 062) are conditional on detection within the
+1 500-input window, so they are truncated. p70ft is outside the blind zone too (r = 0.086), but it serves only 37 % of
+inputs, so audits arrive slowly and D = 7 702 at 10 % is five times the window. Its 0.04 detection is what that predicts.
+Audit false alarms are ≤ 0.10. KS fires at 0.92–1.00 for every model, and CUSUM at 0.92–0.96 for the three models whose coverage drops. That includes the two models whose risk stays below α.
+
+**Verdict: replicates H6c (Mixed), and adds the first real case where auditing works.** Where the excess risk is large
+and coverage is high (distil6), the audit martingale detects the shift at roughly Prop 2's rate. Where coverage is low
+(p70ft), it does not, which is also Prop 2's prediction.
+
+#### 10d — Streaming policy on the real shift (replication of H6d)
+
+**Results** (`results/real/exp10d_streaming.csv`; 20 runs, 1 500 HateXplain then 3 000 Davidson inputs):
+
+| model | policy | L-call frac | risk shifted | risk shifted, last 1 000 | recalibrations | cost | cost (cascade) |
+|---|---|---|---|---|---|---|---|
+| distil6 | always-C | 0.000 | 0.178 | 0.179 | 0.00 | 0.612 | 0.612 |
+| distil6 | static | 0.074 | 0.152 | 0.152 | 0.00 | 0.640 | 0.685 |
+| distil6 | audit 10 % | 0.451 | 0.138 | 0.077 | 0.95 | 0.824 | 1.063 |
+| distil6 | audit 20 % | 0.574 | 0.140 | **0.022** | 1.00 | 0.900 | 1.185 |
+| q4ft | static | 0.327 | 0.049 | 0.046 | 0.00 | **0.543** | 0.648 |
+| q4ft | audit 10 % | 0.409 | 0.045 | 0.042 | 0.10 | 0.620 | 0.730 |
+| p50ft | static | 0.432 | 0.035 | 0.038 | 0.00 | 0.780 | 1.044 |
+| p70ft | static | 0.535 | 0.090 | 0.089 | 0.00 | 0.748 | 0.992 |
+| p70ft | audit 20 % | 0.654 | 0.084 | 0.081 | 0.25 | 0.851 | 1.111 |
+
+**Explanation and verdict: replicates H6d (Mixed).** For distil6, monitoring works as intended. Each run recalibrates
+about once, and the last 1 000 shifted inputs come back within α at a 20 % budget (0.022). That costs 0.900 of L, and
+1.185 when C is charged on every input. q4ft stays within α with no monitoring at all, at 0.543, because its
+certificate already defers a third of the stream. So once more, the cheapest *valid* deployment under shift is not the
+in-domain favourite. For p70ft the excess risk is detectable in principle (r = 0.086), but audits cannot find it in time at
+37 % coverage, and every policy stays at 0.081–0.089 on the last 1 000 inputs.
+
+![](results/real/exp10_real_models.png)
+
+### Exp 11 — CivilComments: groups and temporal drift (`experiments/real/colab_civil.py`, `exp11_civil.py`)
+
+All Exp 11 numbers come from `results/real/exp11_*.csv`, computed from `results/real/civil_preds.npz`. δ = 0.10.
+
+**Hypotheses.** **H11a**: the group failure from Exp 6b replicates on CivilComments. **H11b**: risk drifts upward over time,
+and the audit monitors detect it at about Prop 2's delay. 11a and 11e are checks of H1/H6a and H6d (no new hypothesis).
+
+**Setup.** GPU job B (free-tier Colab T4). Data: CivilComments (WILDS, `raw` config, 448 000 comments), y = 1[toxicity ≥ 0.5].
+Comments are ordered by `created_date`. The *training period* is the earliest 40 %. From it, 60 000 comments train L and
+15 000 *other* comments form the calibration pool `civil_cal`. The stream is 8 000 comments strictly later than the
+training period, 2 000 per calendar quarter, in time order. **The stream covers only 2017 Q1–Q4** (2017-03 to 2017-11),
+because the later 60 % of the data falls in 2017 (`exp11_meta.csv`). The drift analysis therefore has four time points.
+**L** = bert-base-uncased fine-tuned for 2 epochs on the 60 000 training comments. **q8 / q4**: per-output-channel 8- / 4-bit
+fake quantisation of the encoder Linears. **p30 / p50**: one-shot global magnitude pruning. **distil6**: a DistilBERT student
+distilled from L (T = 2, 2 epochs). **p50ft**: p50 plus 1 epoch of masked fine-tuning on the training labels. Score = C's
+max class probability (for two classes this gives the same serve sets as the margin). Groups are the 8 WILDS identities.
+A comment with several identities is assigned to the first match in muslim, black, LGBTQ, white, christian,
+other_religions, female, male, so minorities come first. 12.1 % of calibration and 11.8 % of stream comments have two or
+more identities, and 59.4 % / 60.0 % have none (`exp11_meta.csv`). *Leakage:* 54 exact duplicate texts occur in both
+the training set and the eval rows (`train_eval_dup_texts`, npz meta). They were not removed.
+
+#### 11.0 Overview
+
+**Results** (`results/real/exp11_overview.csv`; "dis" = 1 − agree, derived):
+
+| model | size | latency (× L, T4) | acc cal | acc stream | dis cal | dis stream |
+|---|---|---|---|---|---|---|
+| L | 1.000 | 1.000 | 0.925 | 0.916 | 0.000 | 0.000 |
+| q8 | 0.418 | — | 0.925 | 0.916 | 0.0006 | 0.0008 |
+| q4 | 0.321 | — | 0.927 | 0.919 | 0.019 | 0.022 |
+| p30 | 0.767 | — | 0.929 | 0.918 | 0.0145 | 0.018 |
+| p50 | 0.612 | — | 0.9225 | 0.916 | 0.045 | 0.050 |
+| distil6 | 0.612 | 0.515 | 0.922 | 0.915 | 0.024 | 0.026 |
+| p50ft | 0.612 | — | 0.921 | 0.914 | 0.024 | 0.0265 |
+
+The same operators are far gentler here than on HateXplain: one-shot p50 disagrees on 4.5 % of comments, against 24.2 %
+on HateXplain (`exp6_overview.csv`). A plausible reason, which we did not isolate, is that this is a binary task and its L
+was trained on 60 000 in-distribution comments, so its margins are wider. Every compression's disagreement is a little
+higher on the later stream than on calibration.
+
+#### 11a — Validity and cost (check of H1/H6a)
+
+**Results** (`results/real/exp11a_summary.csv`, population mode on `civil_cal`, 300 draws; α = 0.01, n<sub>cal</sub> = 1000; violation / coverage / cost (size)):
+
+| model | certified (same) | certified (split) | naive |
+|---|---|---|---|
+| q8 | 0.000 / 0.999 / 0.419 | 0.000 / 0.996 / 0.420 | 0.000 / 0.999 / 0.419 |
+| q4 | 0.033 / 0.965 / **0.345** | 0.053 / 0.958 / 0.350 | 0.393 / 0.977 / 0.337 |
+| p30 | 0.040 / 0.973 / 0.773 | 0.047 / 0.969 / 0.774 | 0.363 / 0.987 / 0.770 |
+| p50 | 0.040 / 0.798 / 0.690 | 0.053 / 0.785 / 0.696 | 0.443 / 0.881 / 0.658 |
+| distil6 | 0.073 / 0.926 / 0.640 | 0.050 / 0.910 / 0.646 | 0.460 / 0.954 / 0.629 |
+| p50ft | 0.047 / 0.938 / 0.636 | 0.067 / 0.926 / 0.641 | 0.427 / 0.961 / 0.627 |
+
+Over all 54 cells per certifier, the maximum violation is 0.073 (same mode) and 0.067 (split mode). Naive reaches
+0.54. At α = 0.05 no certifier violates anything (coverage ≥ 0.986 at n = 1000). Every model's unconditional disagreement
+on `civil_cal` is below 0.05, so serving everything is already safe. Split mode is infeasible at n = 200 for α ≤ 0.02,
+because n < 2·m<sub>0</sub> (§1.4 step 1). At n = 500 and α = 0.01 the start index falls back to the last grid point,
+because the required 460 test points exceed n<sub>T</sub> = 350 (derived). The certificate is then feasible only if none
+of the ≈ 350 test points disagrees: P(Bin(350, 0.01) = 0) = 0.030 ≤ δ, but P(Bin(350, 0.01) ≤ 1) = 0.135 > δ (derived).
+This explains q8's feasible rate of 0.947 and the near-zero rates of the others.
+
+**Verdict (check): passes.** The certificate is valid in both modes, and naive is not. Only α = 0.01 stresses the bound
+on this task.
+
+#### 11b — Group certificate (H11a)
+
+**Results** (`results/real/exp11b_summary.csv`; α = 0.05, n<sub>cal</sub> = 2000, 300 draws, population mode on `civil_cal`; "n/draw" = mean group points per draw; marginal violation / group risk, then group-certificate violation / coverage / feasible):
+
+| model | group (pool, n/draw) | unc. dis | marginal: violation / risk | group: violation / coverage / feasible |
+|---|---|---|---|---|
+| distil6 | **black** (490, 65) | 0.057 | **0.993** / 0.055 | 0.003 / 0.602 / 0.74 |
+| distil6 | **white** (532, 71) | 0.066 | **1.000** / 0.066 | 0.057 / 0.636 / 0.78 |
+| p30 | **black** | 0.055 | **1.000** / 0.055 | 0.010 / 0.855 / 0.96 |
+| q4 | **black** / **white** | 0.055 / 0.053 | **1.000** / **1.000** | 0.023 / 0.819; 0.043 / 0.827 |
+| p50 | **LGBTQ** (351, 47) | 0.074 | **1.000** / 0.068 | 0.037 / 0.152 / 0.17 |
+| p50 | **black** | 0.120 | **1.000** / 0.112 | 0.047 / 0.193 / 0.27 |
+| p50 | **white** | 0.118 | **1.000** / 0.112 | 0.050 / 0.336 / 0.47 |
+| p50 | **muslim** (872, 116) | 0.073 | **0.993** / 0.067 | 0.037 / 0.720 / 0.99 |
+| p50 | female (1 695, 226) | 0.056 | 0.443 / 0.050 | 0.073 / 0.941 / 1.00 |
+| p50ft | **LGBTQ** / **white** | 0.071 / 0.064 | **1.000** / **1.000** | 0.027 / 0.085; 0.023 / 0.719 |
+| q8 | all 9 groups | ≤ 0.004 | 0.000 | 0.000 |
+| all | none (8 907, 1 188) | 0.000–0.035 | 0.000 | 0.000 / ≥ 0.998 |
+| all | other_religions (212, 28) | 0.000–0.047 | 0.000 | 0.000 / **0.000** / 0.00 |
+
+The maximum group-certificate violation over all 54 (model, group) cells is 0.073 (p50, female).
+
+**Explanation.** At α = 0.05 the marginal certificate serves almost everything, with group coverage ≥ 0.977 in the failing
+cells. A group's served risk is then essentially its unconditional disagreement, and the marginal certificate fails exactly
+on the groups whose flip rate exceeds α. That rate is 2–5× that of comments with no identity mention (p50: black 0.120,
+white 0.118, against none 0.035; distil6: white 0.066, against 0.018). The failing groups differ from HateXplain. Here they
+are the *race* identities: black or white fails for all five lossy compressions. LGBTQ and muslim fail for
+the pruned models. It is the same structural failure as Exp 6b: a threshold tuned on a mixture dominated by
+"none" (59 %) is too loose for the identity groups. The group certificate repairs every cell (≤ 0.073). Its price falls on
+the small groups: LGBTQ draws hold about 47 points, just above m<sub>0</sub> = 45, so the certificate is often infeasible
+there (feasible 0.10–0.64 across models), and LGBTQ coverage is 0.085–0.63. other_religions draws hold about 28 points
+< m<sub>0</sub>, so that group is never served, by Theorem 1(c). The near-lossless q8 fails on no group.
+
+**Verdict (H11a): Supported.** For 5 of 6 compressions, the marginal certificate is violated in 0.99–1.00 of draws on at
+least one identity group, and the group certificate brings every group to ≤ 0.073. As on HateXplain, the effect holds
+across operators (quantisation, pruning, distillation, fine-tuned pruning). The groups differ (race on CivilComments,
+sexual orientation on HateXplain), so which group a compression hurts depends on the task.
+
+#### 11c — Temporal drift of the certified risk (H11b, first part)
+
+**Results** (`results/real/exp11c_quarterly.csv`; certificate fitted on all 15 000 `civil_cal` comments, α = 0.05; served risk
+per quarter of the stream, 2 000 comments each, with the exact 95 % Clopper–Pearson interval):
+
+| model | coverage | 2017 Q1 | 2017 Q2 | 2017 Q3 | 2017 Q4 | Q4 − Q1 (derived) |
+|---|---|---|---|---|---|---|
+| q8 | 1.000 | 0.0015 [0.000, 0.004] | 0.0005 | 0.0000 | 0.0010 [0.000, 0.004] | −0.0005 |
+| q4 | 1.000 | 0.0215 [0.016, 0.029] | 0.0200 | 0.0220 | 0.0240 [0.018, 0.032] | +0.0025 |
+| p30 | ≥ 0.9995 | 0.0180 [0.013, 0.025] | 0.0150 | 0.0195 | 0.0210 [0.015, 0.028] | +0.0030 |
+| p50 | ≥ 0.9995 | 0.0495 [0.040, 0.060] | 0.0450 | 0.0480 | **0.0575** [0.048, 0.069] | +0.0080 |
+| distil6 | 1.000 | 0.0240 [0.018, 0.032] | 0.0215 | 0.0270 | 0.0315 [0.024, 0.040] | +0.0075 |
+| p50ft | 1.000 | 0.0225 [0.017, 0.030] | 0.0250 | 0.0240 | 0.0345 [0.027, 0.044] | +0.0120 |
+
+Prop 2's predicted delay is ∞ for every model, quarter and budget (columns `pred_delay_audit*`).
+
+**Explanation.** *Every certificate here is "always serve C".* Coverage is 1.000 (≥ 0.9995) for every model, and each
+quarter's risk equals the quarter's unconditional disagreement (`unc_dis`). With 15 000 calibration points and every
+unconditional disagreement below α, the walk reaches the bottom of the grid. For p50, for example, the certified λ is
+0.5002, the minimum of the binary max-probability. The temporal study at α = 0.05 is therefore a study of unconditional
+flip rates.
+
+*There is a drift, but it is small.* Q4 is the highest quarter for five of the six models, and every model's stream
+disagreement exceeds its calibration disagreement (11.0). But the Q1 → Q4 increase is ≤ 0.012, the series is not monotone
+(Q2 is below Q1 for five models), and the Q1 and Q4 intervals overlap for every model. The only quarter above α is p50's Q4
+(0.0575). Its interval contains α, and it is about 1.5 standard errors above it (derived: (0.0575 − 0.05) /
+√(0.05 · 0.95 / 2000) = 1.54). With four time points and a single 2 000-comment sample per quarter, this is not evidence of a
+breach.
+
+*Why Prop 2 says ∞.* Every quarterly risk is ≤ 0.0575, below r<sub>min</sub> = 0.0724. That is the edge of the blind zone
+α < r ≤ r<sub>min</sub>, where the per-audit log-drift KL(r‖α) − KL(r‖q) is ≤ 0 for both q = 2α and 4α (`docs/theory.md` §2).
+Risks below α have no excess to detect at all. So D = ∞ is the theory's prediction, not a numerical failure.
+
+#### 11d — Monitors on the time-ordered stream (H11b, second part)
+
+**Results** (`results/real/exp11d_monitors.csv`, per-run rows in `exp11d_runs.csv`; 20 seeds; "real" = the 8 000-comment
+time-ordered stream; "null" = 8 000 draws from `civil_cal`. For p50 the change point is the start of 2017 Q4, row 6 000.):
+
+| model | monitor | real-stream alarm | of which before the change | detect (after change) | null-stream false alarm |
+|---|---|---|---|---|---|
+| p50 | audit 2 / 5 / 10 / 20 % | 0.10 / 0.05 / 0.20 / 0.15 | all | **0.00** | 0.05 / 0.05 / 0.05 / 0.10 |
+| p50 | adaptive | 0.05 | all | **0.00** | 0.05 |
+| p50 | KS / CUSUM | 1.00 / 0.00 | all | 0.00 | 0.10 / 0.00 |
+| other five | audit 2 / 5 / 10 % / adaptive | 0.00 | — | no change point | 0.00 |
+| other five | audit 20 % | 0.00–0.10 | all | no change point | 0.00 |
+| other five | KS / CUSUM | 1.00 / 0.00 | — | no change point | 0.00–0.10 / 0.00 |
+
+**Explanation.** No audit monitor detects p50's Q4 excess (detect = 0.00 at every budget), and that is what Prop 2
+predicts (D = ∞, 11c). The real-stream alarms for p50 all happen before the change point. They are *not* a type-I error
+estimate: the 20 seeds vary only the audit coins over one fixed comment sequence, so they are strongly correlated. Only
+the null stream, which draws fresh comments per seed, is compared with δ, and it gives 0.00–0.10. KS fires on every model's
+real stream, but this is one deterministic event per model, not 20 detections (t = 999 for p50 and 1 199 for the others,
+identical across seeds; `exp11d_runs.csv`). What it detects is that later comments score differently from calibration. It
+is a covariate-shift alarm with no bearing on the certified risk. CUSUM never fires, because at coverage 1 the deferral
+rate it watches is constant at 0.
+
+**Verdict (H11b): Not supported.** *Drift:* the direction is upward (Q4 is the highest quarter for 5 of 6 models), but the
+size (≤ 0.012) is within the quarterly confidence intervals, and only one model-quarter crosses α, within noise. *Detection:*
+no monitor detects anything, and Prop 2 predicts exactly that (D = ∞, every risk in or below the blind zone). The theory's
+prediction holds. The hypothesis that detection would happen at a *finite* delay of about D is not testable on this
+stream. Four quarters, from a single year, are too short a horizon for a real temporal test (§5).
+
+#### 11e — Streaming policy (check of H6d)
+
+**Results** (`results/real/exp11e_streaming.csv`; 20 seeds; Exp 6d recalibration rule):
+
+| model | policy | L-call frac | served risk | Q4 risk | recalibrations | cost |
+|---|---|---|---|---|---|---|
+| p50 | static | 0.000 | 0.050 | 0.0575 | 0.00 | 0.612 |
+| p50 | audit 10 % | 0.112 | 0.048 | 0.0545 | 0.20 | 0.716 |
+| p50 | adaptive | 0.035 | 0.050 | 0.0566 | 0.05 | 0.645 |
+| q4 | static / audit 10 % / adaptive | 0.000 / 0.101 / 0.029 | 0.022 | 0.024 | 0.00 | 0.321 / 0.422 / 0.350 |
+| q8 | static / audit 10 % / adaptive | 0.000 / 0.101 / 0.027 | 0.001 | 0.001 | 0.00 | 0.418 / 0.519 / 0.446 |
+
+distil6, p30 and p50ft behave like q4: identical risk under every policy and no recalibration.
+
+**Explanation and verdict (check).** With no detectable drift, monitoring is pure overhead: about +0.10 of L's cost for a fixed
+10 % audit and +0.027–0.033 for adaptive auditing (derived from the cost column). For p50, the rare pre-change
+recalibrations (≤ 0.20 per run) move the Q4 risk by 0.003 at most. The adaptive monitor costs about a third of the fixed
+10 % budget here, consistent with Exp 7's in-control result.
+
+![](results/real/exp11_civil.png)
+
 ## 5. Limitations
 
-* **One real model, one task, training-free compressions.** Exp 6 uses a single BERT-base classifier, HateXplain, and
-  compressions applied to L's weights without retraining. Distillation and fine-tuned pruning on real models, LLM-class
-  models, and the group's cyberbullying data are not covered. Distillation needs a GPU.
+* **Two real tasks, BERT-scale only.** Exp 6 and 10 use one HateXplain BERT-base L, with training-free (Exp 6) and trained
+  (Exp 10) compressions. Exp 11 adds a CivilComments L that we fine-tuned ourselves. LLM-class models and the group's
+  cyberbullying data are not covered. Each trained compression comes from a single training seed, so we do not measure
+  how much the Exp 10 ranking moves between training runs.
+* **Exp 10 compressions are trained on gold labels, not towards L** (except distil6). That is the standard recipe, and it
+  explains their low agreement (0.83–0.88). A recipe that adds a KD term towards L would probably be more trust-equivalent,
+  but we have not tested one. 7 (Exp 10) and 54 (Exp 11) exact duplicate texts are shared between the training set and the
+  eval rows (npz meta). They were not removed. This is a small number against 3 846 / 23 000 eval rows, but nonzero.
+* **Exp 11's temporal stream is short.** It has four quarters of one year (2017 Q1–Q4), because the later 60 % of
+  CivilComments falls in 2017. One 2 000-comment sample per quarter gives CI half-widths of about 0.01 at risk 0.05
+  (`exp11c_quarterly.csv`), which is as large as the drift. At α = 0.05 every Exp 11 certificate serves everything
+  (coverage ≥ 0.9995 on the stream; p50's λ = 0.5002 is the minimum binary max-probability), so 11c–11e study unconditional
+  flip rates, not a selective threshold. The real-stream alarm rates in 11d vary only the audit coins over one fixed
+  sequence, so they are not a type-I check (only the null stream is). The KS alarm is one deterministic event per model.
+* **Latency is measured for few models and on two kinds of hardware.** Exp 6's int8 speed-up was measured on CPU. Exp 10/11's
+  distil6 speed-ups (0.428× and 0.515×) were measured *within* the respective T4 fp16 runs, against that run's own L. The two
+  kinds of timing are never compared.
+* **Split mode is expensive on small groups** (Exp 9). It loses most or all coverage when a group has fewer than a few
+  hundred calibration points. The guarantee is then provable, but useless in practice.
 * **Cost measures are partly idealised.** Only int8 has a measured speed-up (0.573×). Fake-quant sizes assume packed
   weights, pruned sizes ignore sparse-index overhead, and pruned/fake-quant models give no real speed-up without
   dedicated kernels. Free-deferral cost flatters every model; the cascade cost is the conservative figure.
-* **Population mode certifies the pool, not the world.** 6a/6b/8c are exact for the empirical distribution of 3 846
-  posts. Generalisation from that pool to new HateXplain-like posts is exactly the held-out setting (6c in-domain column),
+* **Population mode certifies the pool, not the world.** 6a/6b/8c (and 10a/10b, 11a/11b) are exact for the empirical distribution of 3 846
+  posts (15 000 comments for Exp 11). Generalisation from that pool to new HateXplain-like posts is exactly the held-out setting (6c in-domain column),
   where finite-test noise shows up as violation 0.08–0.12 over 50 splits. Population mode is also outside Theorem 1(b):
   bootstrap ties (about 12 % repeats at n = 1 000) violate (C), and the pool's jagged empirical η means (M) is not guaranteed.
-  Its validity results are empirical.
-* **Theorem 1 covers the implemented grid only under (C) + (M).** The assumption-free fix (held-out or lattice grid,
-  held-out start index; §3.1) is specified but not implemented.
+  Its same-mode validity results are empirical. The split-mode results (Exp 9, Exp 11a `certified_split`) are covered by
+  Theorem 1′.
+* **Theorem 1 covers the default (same-mode) grid only under (C) + (M).** The assumption-free variant (Theorem 1′,
+  `mode="split"`) is implemented and checked (Exp 9). The Exp 1–8 and Exp 10 numbers still use same mode, so that they stay
+  comparable with earlier results.
 * **Blind zone of the audit martingale.** With alternatives {2α, 4α}, risks in (α, 0.072] are never detected in
   expectation (Prop 2). On the real shift this is exactly where int8 and p30 land (0.059). A betting-style confidence
   sequence (Waudby-Smith & Ramdas) or an added alternative near 1.3α would close the zone, at the price of a longer
@@ -840,21 +1332,24 @@ confidence level can repair a certificate that conditions on the wrong populatio
 
 ## 6. Path to a paper
 
-1. **Real models — partially done.** Done: BERT-base HateXplain with six training-free compressions (int8, 4/3-bit,
-   30/50/70 % pruning), real identity groups and a real cross-platform shift (Exp 6; Exp 7b, 8c). Open: DistilBERT
-   / distillation and fine-tuned pruning (these need GPU training; a billable Colab T4 session), LLaMA-class vs quantised
-   variants, and the group's cyberbullying data.
-2. **Theory — done** (`docs/theory.md`): Theorem 1 (with the honest (C)+(M) scope and the recommended fix), Proposition 2
-   (delay and blind zone), Corollary 3 (simultaneous group guarantee), Proposition 4 (predictable adaptive auditing), all
-   checked numerically (Exp 8, `tests/`). Remaining: implement the held-out-grid fix so the shipped code matches
-   Theorem 1(a) verbatim.
+1. **Real models — mostly done.** Done: BERT-base HateXplain with six training-free compressions (Exp 6; Exp 7b, 8c) and
+   four trained ones (DistilBERT KD, fine-tuned 50/70 % pruning, 4-bit QAT; Exp 10), plus a second dataset, CivilComments,
+   with six compressions (Exp 11). The total GPU cost was 46 free-tier T4 minutes (§7). Open: LLaMA-class models against
+   their quantised variants, the group's cyberbullying data, several training seeds per trained compression, and a
+   compression recipe that trains towards L (KD + labels). Exp 10 suggests the last would be the more trust-equivalent one.
+2. **Theory — done** (`docs/theory.md`): Theorem 1 (with the honest (C)+(M) scope), Theorem 1′ (split grid, assumption-free,
+   implemented as `mode="split"` and checked in Exp 9), Proposition 2 (delay and blind zone, confirmed again on real data in
+   Exp 10c and 11d), Corollary 3 (simultaneous group guarantee), Proposition 4 (predictable adaptive auditing), all checked
+   numerically (Exp 8, 9, `tests/`). Remaining: a split variant that does not lose small groups. One option is a lattice
+   grid with no design part.
 3. **Adaptive auditing — done for the first design** (Exp 7). The predictable KS trigger is valid, is the fastest
    monitor on harmful drift, and costs about a fixed 2 % budget in-control. Remaining: a trigger that ignores harmless
    score shifts, an alternative set or betting confidence sequence without a blind zone, and a principled treatment of
    pre-change drift.
-4. **Temporal drift on real data — open.** It needs a timestamped hate-speech corpus (train and calibrate on 2017, stream
-   2019–2024). Exp 6c's HateXplain → Davidson shift is a stand-in. Its lesson, that robustness to shift complicates the
-   in-domain ranking of compressions (6d), is what the temporal study should test at scale.
+4. **Temporal drift on real data — started, inconclusive.** Exp 11 ran the full protocol on time-ordered CivilComments, but
+   the post-training stream covers only 2017 Q1–Q4, and the drift there (≤ 0.012) is below what four 2 000-comment quarters
+   can resolve. A multi-year corpus is still needed. The lesson that robustness to shift complicates the in-domain ranking of
+   compressions (6d) held again on the cross-platform shift in Exp 10d: distil6 is the best in-domain and the worst on Davidson.
 5. **Deliverable — open.** A `trustcert` library (certify, audit, recalibrate) plus an evaluation protocol: *report
    certified coverage at (α, δ), per group, not agreement*. Packaging should wait until items 1 and 3 settle.
 
@@ -865,8 +1360,22 @@ ACL/EMNLP findings paper.
 
 ## 7. Reproduction
 
-`bash run_all.sh` runs Exp 1–5, 7 and 8 (about 45 min of CPU for Exp 1–5 on 2 cores), and also runs the Exp 6 analysis if
-`results/real/real_preds.npz` exists. The real-model inference runs once on Colab (see README); the predictions file is
-committed, so the Exp 6 analysis and the real parts of Exp 7/8 run offline. `python tests/run.py` runs the test suite.
+`bash run_all.sh` runs Exp 1–5, 7 and 8 (about 45 min of CPU for Exp 1–5 on 2 cores). It also runs the Exp 6 analysis and
+Exp 9 (about 3 min; part (b) needs the HateXplain predictions) if `results/real/real_preds.npz` exists. It runs the Exp 10
+analysis if `results/real/real_preds_ft.npz` exists, and Exp 11 if `results/real/civil_preds.npz` exists. The real-model
+inference and training run once on Colab (see README). All three predictions files are committed, so every analysis, and
+the real parts of Exp 7/8, runs offline on CPU. `python tests/run.py` runs the test suite (27 tests).
+
+GPU use (free-tier Colab T4; measured from VM allocation to stop; the cap was 180 T4-minutes):
+
+| job | script | output | estimate (min) | actual (min) | training time per model (s, npz meta) |
+|---|---|---|---|---|---|
+| probe | `nvidia-smi` | — | — | 5 | — |
+| A: HateXplain fine-tune / distil | `experiments/real/colab_train_hx.py` | `real_preds_ft.npz` | 45 | **9** | distil6 109, p50ft 122, p70ft 121, q4ft 70 |
+| B: CivilComments L + compressions | `experiments/real/colab_civil.py` | `civil_preds.npz` | 75 | **32** | L 739, distil6 465, p50ft 373 |
+| **total** | | | 120 | **46** | |
+
+The Exp 10 and 11 figures (`exp10_real_models.png`, `exp11_civil.png`) need matplotlib, so they were drawn from the CSVs on a
+CPU Colab VM (`exp11_civil.py --plot-only`). The CSVs themselves are produced locally.
 Seeds are fixed. The earlier descriptive study (trust under drift, subgroup bias, deferral curves) that
 motivated this version is kept in `docs/v0_descriptive_study_REPORT.md`.

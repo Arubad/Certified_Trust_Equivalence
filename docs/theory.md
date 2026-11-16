@@ -295,11 +295,21 @@ $1/\sqrt{n}$, a ratio of $1/\sqrt{0.7} \approx 1.20$. So the main gap is about
 $\varphi_{\text{same}}(n) - \varphi_{\text{same}}(0.7n)$, and it shrinks like $n^{-1/2}$. Two
 smaller costs come on top of that. First, the start index skips the top of the grid where
 the rescaled count is below $2m_0$ (the same-data walk starts at $m_0$). Second, a fraction
-of runs ends infeasible when the random test count at $j_0$ or an early $p_j$ falls short. A
-reviewer simulation (monotone $\eta = 0.25(1-u)^2$, $n = 1000$) gave split coverage .625 with
-1.7 % of runs infeasible, against .647 for same-data, and violation rates .062 and .070, both
-below $\delta$. With a start margin of only $m_0$, the split reached just .355 with 43 % of
-runs infeasible. The random partition also adds some run-to-run variance.
+of runs ends infeasible when the random test count at $j_0$ or an early $p_j$ falls short. The random partition also adds some run-to-run variance.
+
+*Measured* (`results/exp9_split_certificate.csv`, $\alpha = .05$ unless stated). The prediction
+holds when many points are accepted near the start. The coverage loss (same − split) is at most
+.02 in 40 of the 53 cells. Examples: toxic at $n = 1000$, .999 vs .997; HateXplain int8 at
+$n = 1000$, .861 vs .851; q4, .977 vs .971. Split violation is at most .090 in every cell (same:
+.095). The two smaller costs dominate when few points are accepted. Digits prune90 at $n = 200$
+drops from .268 to .006 (feasible .01). int8 at $\alpha = .02$, $n = 500$ drops from .472 to .199.
+On the Exp 6b groups at $n_{\text{cal}} = 2000$, Homosexual drops from .287 to .000 and Women from
+.391 to .003. In those cells the $2m_0$ start lies beyond the region that same mode certifies.
+*Unpublished illustrative simulation* (run once during review, not in the repository, and not
+reproduced by any script): with a monotone $\eta = 0.25(1-u)^2$ and $n = 1000$, split coverage was
+.625 with 1.7 % of runs infeasible, against .647 for same-data, with violation rates .062 and .070.
+With a start margin of only $m_0$, the split reached just .355 with 43 % of runs infeasible. This
+is why §1.4 uses $2m_0$.
 
 **Checked by:** `tests/test_certify.py::test_split_mode_validity_nonmonotone`, `results/exp9_split_certificate.csv`.
 
