@@ -93,6 +93,25 @@ def degenerate(cert, s_cal):
     return (not cert.feasible) or cert.coverage(s_cal) < 0.05
 
 
+def clopper_pearson_ci(k, n, conf=0.95):
+    """Two-sided exact binomial interval (lo, hi) for k successes out of n."""
+    from scipy.stats import beta
+    a = (1 - conf) / 2
+    lo = 0.0 if k == 0 else float(beta.ppf(a, k, n - k + 1))
+    hi = 1.0 if k == n else float(beta.ppf(1 - a, k + 1, n - k))
+    return lo, hi
+
+
+def blind_zone_rmin(alpha=ALPHA, delta=DELTA):
+    """r_min: the smallest disagreement rate r > alpha at which Prop 2's per-audit log-drift is positive,
+    max_q KL_q(r) > 0 with KL_q(r) = r log(q/alpha) + (1-r) log((1-q)/(1-alpha)) = KL(r||alpha) - KL(r||q).
+    For r in (alpha, r_min] the audit martingale has no drift to detect and D(r) = inf (the blind zone)."""
+    from scipy.optimize import brentq
+    qs = [min(0.95, 2 * alpha), min(0.95, 4 * alpha)]
+    kap = lambda r: max(r * np.log(q / alpha) + (1 - r) * np.log((1 - q) / (1 - alpha)) for q in qs)  # noqa: E731
+    return float(brentq(kap, alpha + 1e-9, 0.5))
+
+
 def _variants_a():
     return [("certified", lambda a: SelectiveCertificate(a, DELTA, mode="same")),
             ("certified_split", lambda a: SelectiveCertificate(a, DELTA, mode="split")),
@@ -178,9 +197,12 @@ def part_c(S, D, models, cal, st, quarters):
         for q in qs:
             m = quarters == q
             served = sm & m
+            n_sv, k_sv = int(served.sum()), int(d_st[served].sum())
             risk = float(d_st[served].mean()) if served.any() else np.nan
+            ci_lo, ci_hi = clopper_pearson_ci(k_sv, n_sv) if n_sv else (np.nan, np.nan)
             cov = float(sm[m].mean())
-            row = {"model": c, "quarter": q, "n": int(m.sum()), "coverage": cov, "risk": risk,
+            row = {"model": c, "quarter": q, "n": int(m.sum()), "coverage": cov, "n_served": n_sv,
+                   "k_served": k_sv, "risk": risk, "ci_lo": ci_lo, "ci_hi": ci_hi,
                    "unc_dis": float(d_st[m].mean()), "exceeds_alpha": bool(risk > ALPHA),
                    "degenerate": deg}
             for bn, b in BUDGETS.items():
@@ -280,8 +302,11 @@ def part_e(S, D, meta, models, cal, st, quarters, certs, reps):
 
 
 # ---------------------------------------------------------------- plot --
-def plot_from_csv(out):
-    """Three-panel figure from the CSVs. Returns False when matplotlib is not installed."""
+def plot_from_csv(out, alpha_a=0.01):
+    """Three-panel figure from the CSVs. Returns False when matplotlib is not installed.
+    (a) validity at alpha_a (default 0.01, where naive thresholds violate), certified / split / naive per model;
+    (c) served risk per quarter with exact 95% Clopper-Pearson intervals and the blind-zone edge r_min;
+    (d) monitor alarm rates for p50 alone (the one model whose risk crosses alpha)."""
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -291,31 +316,45 @@ def plot_from_csv(out):
     sa = pd.read_csv(os.path.join(out, "exp11a_summary.csv"))
     qc = pd.read_csv(os.path.join(out, "exp11c_quarterly.csv"))
     md = pd.read_csv(os.path.join(out, "exp11d_monitors.csv"))
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5))
     ax = axes[0]
+    styles = {"certified": "-", "certified_split": "--", "naive": ":"}
     for c in sa.model.unique():
-        g = sa[(sa.model == c) & (sa.alpha == ALPHA)]
-        for nm, ls in [("certified", "-"), ("naive", ":")]:
-            gg = g[g.certifier == nm]
-            ax.plot(gg.n_cal, gg.violation, ls, marker="o", ms=3, label=f"{c} {nm}" if nm == "certified" else None)
+        g = sa[(sa.model == c) & (np.isclose(sa.alpha, alpha_a))]
+        for nm, ls in styles.items():
+            gg = g[g.certifier == nm].sort_values("n_cal")
+            ax.plot(gg.n_cal, gg.violation, ls, marker="o", ms=3, label=f"{c} {nm}")
     ax.axhline(DELTA, color="k", ls="--", lw=0.8)
-    ax.set_xlabel("calibration size"); ax.set_ylabel("P(population risk > alpha)")
-    ax.set_title("(a) validity on civil_cal, alpha=0.05 (dotted = naive)"); ax.legend(fontsize=7)
+    ax.text(ax.get_xlim()[0], DELTA, " delta=0.10", va="bottom", fontsize=7)
+    ax.set_xlabel("calibration size n_cal"); ax.set_ylabel("P(population risk > alpha)")
+    ax.set_title(f"(a) validity on civil_cal, alpha={alpha_a}")
+    ax.legend(fontsize=6, ncol=2)
     ax = axes[1]
-    for c in qc.model.unique():
-        gg = qc[qc.model == c]
-        ax.plot(range(len(gg)), gg.risk, marker="o", label=c)
+    rmin = blind_zone_rmin()
+    for i, c in enumerate(qc.model.unique()):
+        gg = qc[qc.model == c].reset_index(drop=True)
+        xx = np.arange(len(gg)) + (i - 2.5) * 0.04
+        yerr = np.vstack([gg.risk - gg.ci_lo, gg.ci_hi - gg.risk])
+        ax.errorbar(xx, gg.risk, yerr=yerr, marker="o", ms=3, capsize=2, lw=1, label=c)
     ax.axhline(ALPHA, color="k", ls="--", lw=0.8)
+    ax.text(-0.3, ALPHA, " alpha=0.05", va="bottom", fontsize=7)
+    ax.axhline(rmin, color="tab:red", ls=":", lw=1)
+    ax.text(-0.3, rmin, f" r_min={rmin:.3f} (blind zone below)", va="bottom", fontsize=7, color="tab:red")
     ax.set_xticks(range(len(gg))); ax.set_xticklabels(gg.quarter)
-    ax.set_ylabel("served disagreement risk"); ax.set_title("(c) per-quarter risk, certificate fit on civil_cal")
+    ax.set_ylim(0, rmin * 1.25)
+    ax.set_ylabel("served disagreement risk (95% CP)")
+    ax.set_title("(c) per-quarter risk, certificate fit on civil_cal")
     ax.legend(fontsize=7)
     ax = axes[2]
-    agg = md.groupby("monitor")[["alarm_real", "false_alarm"]].mean().reindex(MON_NAMES)
-    xx = np.arange(len(agg))
-    ax.bar(xx - 0.2, agg.alarm_real, 0.4, label="alarm on real stream")
-    ax.bar(xx + 0.2, agg.false_alarm, 0.4, label="alarm on null stream")
-    ax.set_xticks(xx); ax.set_xticklabels(agg.index, rotation=30)
-    ax.set_title("(d) monitor alarm rates (mean over models)"); ax.legend(fontsize=7)
+    p50 = md[md.model == "p50"].set_index("monitor").reindex(MON_NAMES)
+    xx = np.arange(len(p50))
+    ax.bar(xx - 0.2, p50.alarm_real, 0.4, label="alarm on real stream (all pre-change)")
+    ax.bar(xx + 0.2, p50.false_alarm, 0.4, label="alarm on null stream")
+    ax.axhline(DELTA, color="k", ls="--", lw=0.8)
+    ax.set_xticks(xx); ax.set_xticklabels(p50.index, rotation=30)
+    ax.set_ylabel("fraction of seeds (20)")
+    ax.set_title("(d) monitor alarm rates, p50 only")
+    ax.legend(fontsize=7)
     fig.tight_layout()
     path = os.path.join(out, "exp11_civil.png")
     fig.savefig(path, dpi=130)

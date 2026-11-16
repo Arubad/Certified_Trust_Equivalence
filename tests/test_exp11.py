@@ -90,5 +90,47 @@ def test_exp11_end_to_end_smoke():
         q = pd.read_csv(os.path.join(out, "exp11c_quarterly.csv"))
         assert sorted(q.quarter.unique()) == ["2017Q1", "2017Q2", "2017Q3", "2017Q4"]
         assert set(q.model) == set(MODELS)
+        ok = q.risk.notna()
+        assert (q.ci_lo[ok] <= q.risk[ok] + 1e-12).all() and (q.risk[ok] <= q.ci_hi[ok] + 1e-12).all()
+        assert {"n_served", "k_served", "ci_lo", "ci_hi"} <= set(q.columns)
     finally:
         shutil.rmtree(d)
+
+
+def test_clopper_pearson_ci():
+    # k = 0 of n = 10: lower bound 0, upper bound 1 - 0.025**(1/10)  (exact two-sided 95%)
+    lo, hi = ex11.clopper_pearson_ci(0, 10)
+    assert lo == 0.0 and abs(hi - (1 - 0.025 ** 0.1)) < 1e-9
+    lo, hi = ex11.clopper_pearson_ci(10, 10)
+    assert hi == 1.0 and abs(lo - 0.025 ** 0.1) < 1e-9
+    lo, hi = ex11.clopper_pearson_ci(100, 2000)
+    assert lo < 0.05 < hi and abs((lo + hi) / 2 - 0.05) < 0.01
+
+
+def test_blind_zone_rmin():
+    # r_min = max_q-root of KL_q(r) for alpha = 0.05, q in {2 alpha, 4 alpha}: about 0.0724
+    r = ex11.blind_zone_rmin()
+    assert abs(r - 0.0724) < 1e-3, r
+    from tec.monitor import expected_audit_delay
+    assert expected_audit_delay(r - 0.002, 0.05, 0.10, 0.10, 1.0) == float("inf")
+    assert np.isfinite(expected_audit_delay(r + 0.002, 0.05, 0.10, 0.10, 1.0))
+
+
+def test_simulate_policy_pinned():
+    # Regression pin of exp6 simulate_policy (shared with exp11e): fixed seeds, tiny stream.
+    # Stream: 300 rows with no drift, then 300 rows with disagreement rate 0.25; disagreement-free calibration.
+    import exp6_real_models as ex6
+    rs = np.random.default_rng(0)
+    n = 600
+    s = rs.uniform(0, 1, n)
+    d = (rs.uniform(0, 1, n) < np.where(np.arange(n) < 300, 0.0, 0.25)).astype(int)
+    sc = np.random.default_rng(1).uniform(0, 1, 400)
+    dc = np.zeros(400, int)
+    cases = {"always-C": (600, 0, 0, 0), "static": (598, 2, 0, 280),
+             "audit10": (505, 144, 1, 63109), "adaptive": (598, 14, 0, 3266)}
+    for pol, (sv_n, lc_n, nre, lc_idx) in cases.items():
+        servedC, Lc, nr = ex6.simulate_policy(pol, s, d, sc, dc, 0.05, 0.10 if pol == "audit10" else 0.0, seed=0)
+        assert int(servedC.sum()) == sv_n, (pol, int(servedC.sum()))
+        assert int(Lc.sum()) == lc_n, (pol, int(Lc.sum()))
+        assert nr == nre, (pol, nr)
+        assert int(np.flatnonzero(Lc).sum()) == lc_idx, (pol, int(np.flatnonzero(Lc).sum()))
