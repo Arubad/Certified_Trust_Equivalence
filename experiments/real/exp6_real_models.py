@@ -32,7 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", ".."))
 from tec.certify import (SelectiveCertificate, NaiveThreshold, GroupCertificate, selective_risk,  # noqa: E402
                          hoeffding_marginal_bound, certified_cost)
-from tec.monitor import DeferralRateCUSUM, ShadowAuditMartingale, ScoreKS  # noqa: E402
+from tec.monitor import DeferralRateCUSUM, ShadowAuditMartingale, ScoreKS, AdaptiveAuditMartingale  # noqa: E402
 
 OUT = os.environ.get("TEC_REAL_OUT", os.path.join(HERE, "..", "..", "results", "real"))
 DELTA = 0.10
@@ -50,6 +50,65 @@ def first_group(g):
         if t in g.split("|"):
             return MAIN_GROUPS.index(t)
     return len(MAIN_GROUPS)                     # "other / none"
+
+
+RECAL = 300              # Exp 6d / 11e: rows sent to L after an alarm before the certificate is refit
+
+
+def first_alarm(name, M, serve, s, d):
+    """Index of the first alarm of monitor M over the stream, or None (Exp 6c / Exp 11d).
+    Audit monitors see only served inputs (the audit compares C with L); adaptive likewise, with
+    the served score; CUSUM sees the deferral indicator; KS sees every score."""
+    for t in range(len(s)):
+        if name.startswith("audit"):
+            al = M.update(int(d[t])) if serve[t] else False
+        elif name == "adaptive":
+            al = M.update(s[t], int(d[t])) if serve[t] else False
+        elif name == "cusum":
+            al = M.update(not serve[t])
+        else:
+            al = M.update(s[t])
+        if al:
+            return t
+    return None
+
+
+def simulate_policy(policy, s, d, s_ca, d_ca, alpha, budget, seed):
+    """Streaming policy of Exp 6d, reused by Exp 11e. policy: always-C | static | audit<pct> | adaptive.
+    Returns (servedC, Lc, n_recal): inputs served by C, inputs sent to L (deferrals, audits and the
+    RECAL rows after an alarm), and the number of recalibrations."""
+    n = len(s); servedC = np.zeros(n, bool); Lc = np.zeros(n, bool)
+    cert = SelectiveCertificate(alpha, DELTA).fit(s_ca, d_ca)
+    mon = None
+    if policy.startswith("audit"):
+        mon = ShadowAuditMartingale(alpha, DELTA, budget, seed=seed)
+    elif policy == "adaptive":
+        mon = AdaptiveAuditMartingale(alpha, DELTA, s_cal=s_ca, lam=cert.lam, seed=seed)
+    buf_s, buf_d, left, nre = [], [], 0, 0
+    for t in range(n):
+        if policy == "always-C":
+            servedC[t] = True; continue
+        if left > 0:
+            Lc[t] = True; buf_s.append(s[t]); buf_d.append(d[t]); left -= 1
+            if left == 0:
+                ref = np.array(buf_s)
+                cert = SelectiveCertificate(alpha, DELTA).fit(ref, np.array(buf_d))
+                if policy == "adaptive":   # new reference (the refit window) and new lambda
+                    mon = AdaptiveAuditMartingale(alpha, DELTA, s_cal=ref, lam=cert.lam, seed=seed)
+                else:
+                    mon.reset()
+                buf_s, buf_d = [], []
+            continue
+        serve = s[t] >= cert.lam
+        servedC[t], Lc[t] = serve, not serve
+        if mon is not None and serve:
+            na = mon.n_audits
+            alarm = mon.update(s[t], int(d[t])) if policy == "adaptive" else mon.update(int(d[t]))
+            if alarm:
+                left = RECAL; nre += 1
+            if mon.n_audits > na:
+                Lc[t] = True
+    return servedC, Lc, nre
 
 
 def save(df, name):
@@ -290,16 +349,7 @@ def main(argv=None):
                     mons["cusum"] = DeferralRateCUSUM(1 - cert.coverage(S[c][ca]), eps=0.05, h=5.0)
                     mons["ks"] = ScoreKS(S[c][ca], window=200, delta=DELTA, n_windows_expected=15)
                     for mn, M in mons.items():
-                        t_alarm = None
-                        for t in range(len(st)):
-                            if mn.startswith("audit"):
-                                al = M.update(int(d_st[t])) if serve[t] else False
-                            elif mn == "cusum":
-                                al = M.update(not serve[t])
-                            else:
-                                al = M.update(s_st[t])
-                            if al:
-                                t_alarm = t; break
+                        t_alarm = first_alarm(mn, M, serve, s_st, d_st)
                         mon_rows.append({"model": c, "split": r, "null_stream": null, "monitor": mn,
                                          "alarm_pre": t_alarm is not None and t_alarm < 1500,
                                          "alarm_post": t_alarm is not None and t_alarm >= 1500,
@@ -324,30 +374,9 @@ def main(argv=None):
     print("[6c] monitor rows skipped for degenerate certificates:", sorted(skipped_monitor_models))
 
     # ------------------------------------------------------ 6d streaming policy --
-    RECAL = 300
-
     def run_policy(policy, s, d, s_ca, d_ca, alpha, budget, seed):
-        n = len(s); servedC = np.zeros(n, bool); Lc = np.zeros(n, bool)
-        cert = SelectiveCertificate(alpha, DELTA).fit(s_ca, d_ca)
-        mon = ShadowAuditMartingale(alpha, DELTA, budget, seed=seed) if policy.startswith("audit") else None
-        buf_s, buf_d, left, nre = [], [], 0, 0
-        for t in range(n):
-            if policy == "always-C":
-                servedC[t] = True; continue
-            if left > 0:
-                Lc[t] = True; buf_s.append(s[t]); buf_d.append(d[t]); left -= 1
-                if left == 0:
-                    cert = SelectiveCertificate(alpha, DELTA).fit(np.array(buf_s), np.array(buf_d))
-                    mon.reset(); buf_s, buf_d = [], []
-                continue
-            serve = s[t] >= cert.lam
-            servedC[t], Lc[t] = serve, not serve
-            if mon is not None and serve:
-                na = mon.n_audits
-                if mon.update(int(d[t])):
-                    left = RECAL; nre += 1
-                if mon.n_audits > na:
-                    Lc[t] = True
+        servedC, Lc, nre = simulate_policy(policy, s, d, s_ca, d_ca, alpha, budget, seed)
+        n = len(s)
         seg = np.arange(n) >= 1500
         rk = lambda m: float(d[m].mean()) if m.any() else np.nan  # noqa: E731  (NaN: nothing served)
         return {"policy": policy, "L_call_frac": float(Lc.mean()), "C_served_frac": float(servedC.mean()),
