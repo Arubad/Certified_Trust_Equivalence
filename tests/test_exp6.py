@@ -60,13 +60,17 @@ def test_check_L_rejects_row_mismatch():
     assert raised
 
 
-def test_untimed_models_have_no_latency():
-    # without int8 in the run the timings are not from the same hardware: no latency columns
-    Z = {"y": np.array([0, 1]), "split": np.array(["val", "val"]),
-         "prob_L": np.eye(3)[[0, 1]], "prob_distil6": np.eye(3)[[0, 1]]}
-    meta = {"L": {"size": 1.0, "per_1k": 0.5}, "distil6": {"size": 0.6, "per_1k": 0.2}}
-    ov = overview(Z, meta, models=["distil6"])
-    assert ov["latency_rel"].isna().all()
+def test_latency_only_for_speedup_models():
+    # latency is taken from the npz's own timings (same run). Only L and the models with a real
+    # speed-up (int8, distil6) get latency_rel; pruned / fake-quant models run dense -> NaN.
+    Z = {"y": np.array([0, 1]), "split": np.array(["val", "val"]), "prob_L": np.eye(3)[[0, 1]],
+         "prob_distil6": np.eye(3)[[0, 1]], "prob_p50ft": np.eye(3)[[0, 1]]}
+    meta = {"L": {"size": 1.0, "per_1k": 0.5}, "distil6": {"size": 0.6, "per_1k": 0.2},
+            "p50ft": {"size": 0.6, "per_1k": 0.4}}
+    ov = overview(Z, meta, models=["distil6", "p50ft"]).set_index("model")
+    assert np.isclose(ov.loc["L", "latency_rel"], 1.0)
+    assert np.isclose(ov.loc["distil6", "latency_rel"], 0.4), ov.loc["distil6", "latency_rel"]
+    assert np.isnan(ov.loc["p50ft", "latency_rel"])
 
 
 def test_overview_excludes_no_majority():

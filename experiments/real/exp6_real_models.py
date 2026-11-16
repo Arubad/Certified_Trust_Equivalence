@@ -39,6 +39,9 @@ DELTA = 0.10
 COMPRESSED = ["int8", "q4", "q3", "p30", "p50", "p70"]
 MAIN_GROUPS = ["African", "Islam", "Jewish", "Homosexual", "Women"]
 AGREE_TOL = 0.995        # ruling R1: GPU prob_L is used when its HateXplain argmax agreement with CPU L >= this
+# models with a real speed-up (int8: CPU int8 kernels; distil6: 6 layers instead of 12).
+# Pruned and fake-quant models run dense, so their latency is NaN (exp6 convention).
+LATENCY_MODELS = ("L", "int8", "distil6")
 
 
 def first_group(g):
@@ -86,20 +89,18 @@ def overview(Z, meta, models=COMPRESSED):
     """Per-model accuracy and agreement with L on HateXplain (hx) and Davidson (dv).
 
     acc_* uses labelled rows only (y >= 0); agree_* uses every row of the domain.
-    latency_rel is computed only when int8 is among `models` (the exp6 setting, where
-    every timing comes from one CPU run; int8 is the one model with a real CPU speed-up).
-    Otherwise (e.g. the T4 fp16 run in real_preds_ft.npz) it is NaN, so timings from
-    different hardware are never compared.
+    latency_rel = per_1k[c] / per_1k[L], both from the same npz (the same run, so the same
+    hardware), and only for LATENCY_MODELS; other models are NaN. Timings from different files
+    (e.g. T4 fp16 vs CPU fp32) are never compared.
     """
     y, split = Z["y"], Z["split"]
     hx, dv = np.isin(split, ["val", "test"]), split == "davidson"
     predL = Z["prob_L"].argmax(1)
     lat_L = meta["L"]["per_1k"]
-    timed = "int8" in models
     ov = []
     for c in ["L"] + [c for c in models if "prob_" + c in Z]:
         p = Z["prob_" + c].argmax(1)
-        lat_rel = meta[c]["per_1k"] / lat_L if (timed and c in ("L", "int8")) else np.nan
+        lat_rel = meta[c]["per_1k"] / lat_L if c in LATENCY_MODELS else np.nan
         r = {"model": c, "size": meta[c]["size"], "latency_rel": lat_rel}
         for nm, m in [("hx", hx), ("dv", dv)]:
             lab = m & (y >= 0)
@@ -177,7 +178,7 @@ def main(argv=None):
             R = {k: F[k] for k in ["y", "split", "prob_L"]}
         info, Z["prob_L"] = check_L(Z, R)
         info.update(tag=tag, npz=os.path.basename(npz), ref=os.path.basename(ref),
-                    timing=("same run" if "int8" in models else "not compared: different hardware"))
+                    timing="T4 fp16 timings compared within the --npz run only (latency_rel uses that run's own L); never against the CPU file")
         print(f"[L check] HateXplain argmax agreement GPU vs CPU = {info['agree_hx']:.4f} "
               f"(davidson {info['agree_dv']:.4f}); threshold {AGREE_TOL}; using L = {info['L_source']}")
         save(pd.DataFrame([info]), f"{tag}_L_check.csv")
@@ -186,7 +187,6 @@ def main(argv=None):
     predL = Z["prob_L"].argmax(1)
     S = {c: margin(Z["prob_" + c]) for c in models}
     D = {c: (Z["prob_" + c].argmax(1) != predL).astype(int) for c in models}
-    timed = "int8" in models
     lat_L = meta["L"]["per_1k"]
 
     pd.set_option("display.width", 240)
@@ -220,12 +220,9 @@ def main(argv=None):
     sa["size"] = sa.model.map(lambda c: meta[c]["size"])
     # cost_size / cost_latency: free-deferral assumption (a deferred input costs only L).
     sa["cost_size"] = certified_cost(sa.coverage, sa["size"])
-    if timed:
-        lat = sa.model.map(lambda c: meta[c]["per_1k"] / lat_L if c in ("L", "int8") else np.nan)
-        sa["cost_latency"] = np.where(sa.model.isin(["L", "int8"]),
-                                      certified_cost(sa.coverage, lat), np.nan)
-    else:
-        sa["cost_latency"] = np.nan
+    lat = sa.model.map(lambda c: meta[c]["per_1k"] / lat_L if c in LATENCY_MODELS else np.nan)
+    sa["cost_latency"] = np.where(sa.model.isin(LATENCY_MODELS),
+                                  certified_cost(sa.coverage, lat), np.nan)
     # cost_cascade: C always runs to produce its margin, then L on deferred inputs.
     sa["cost_cascade"] = sa["size"] + (1 - sa.coverage)
     save(sa, f"{tag}a_summary.csv")
