@@ -174,32 +174,41 @@ part is fixed, the hypotheses and their order are fixed, so Theorem 1(a) applies
 Inputs: scores $s_1,\dots,s_n$ and disagreements $d_1,\dots,d_n$, and $\alpha$, $\delta$,
 $G$ (`n_grid`), $f$ (`design_frac`, with $0 < f < 1$), `seed`, and
 $m_0 = \max(\texttt{min\_accept}, \lceil \log\delta/\log(1-\alpha)\rceil)$, the same `self.min_accept`
-as in `__init__`. Indices are 0-based, as in the code.
+as in `__init__`. Indices are 0-based, as in the code. As in `tec/certify.py`, cast the inputs
+with `s = np.asarray(s)` and `d = np.asarray(d).astype(int)`. The default `mode="same"` must stay
+byte-identical to the current `fit`, so the split procedure is a separate branch.
 
 0. **Initialise.** Set `lam = inf`, `feasible = False`, `trace = []`.
-1. **Size check.** If $n < 2m_0$, return now (infeasible, `lam = inf`).
+1. **Size check.** If $n < 2m_0$, return infeasible: set `lam = inf`, `feasible = False`,
+   `trace = []` and `return self`.
 2. **Split.** Let `perm = np.random.default_rng(seed).permutation(n)`, $n_D = \lfloor f n \rfloor$
    (`int(np.floor(design_frac * n))`) and $n_T = n - n_D$. The design part is
    $D$ = `perm[:n_D]` and the test part is $T$ = `perm[n_D:]`. If $n_D < 1$ or $n_T < m_0$,
-   return now (infeasible). With $f = 0.3$ and $n \ge 2m_0$ this cannot happen, because
+   return infeasible: set `lam = inf`, `feasible = False`, `trace = []` and `return self`. With $f = 0.3$ and $n \ge 2m_0$ this cannot happen, because
    $n_T \ge 0.7n \ge 1.4m_0$. The permutation depends only on `seed` and $n$, never on the data.
 3. **Grid (design part only).** Set
    `grid = np.unique(np.quantile(s[D], np.linspace(0, 1, G)))[::-1]`. Its values
    $\lambda_0 > \lambda_1 > \dots > \lambda_{G'-1}$ are strictly decreasing and distinct, with
-   $G' \le G$. Ties in $s[D]$ only merge grid points. The last value is $\min s[D]$.
+   $G' \le G$. Ties in $s[D]$ only merge grid points. The last value is $\min s[D]$. The grid
+   has at most $n_D$ distinct values, so it is coarser than the same-data grid whenever
+   $G > n_D$. For example, at the default $G = 200$ with $n = 300$, $n_D = 90$, so $G' \le 90$.
 4. **Start index (design part only).** For each $j$, let $a_j = \#\{i \in D : s_i \ge \lambda_j\}$.
-   Let $j_0$ be the smallest $j$ with $a_j \cdot n_T \ge m_0 \cdot n_D$, which says that the
-   design count rescaled to the test size, $a_j n_T / n_D$, is at least $m_0$. Use integer
-   arithmetic for this comparison. Such a $j$ always exists, because the last grid value has
-   $a_{G'-1} = n_D$, so the rescaled count is $n_T \ge m_0$ after step 2.
+   Let $j_0$ be the smallest $j$ with $a_j \cdot n_T \ge 2 m_0 \cdot n_D$, which says that the
+   design count rescaled to the test size, $a_j n_T / n_D$, is at least $2m_0$. Use integer
+   arithmetic for this comparison. If no such $j$ exists (possible only when $n_T < 2m_0$,
+   because the last grid value has $a_{G'-1} = n_D$), set $j_0 = G'-1$. The factor 2 is a
+   power margin. Since the test count at $j_0$ is random, about $a_{j_0} n_T/n_D$, a start at
+   only $m_0$ ends infeasible in roughly half of all runs. **Validity does not depend on the
+   margin.** Any $\mathcal D$-measurable $j_0$ works in the proof below.
 5. **Fixed-sequence test (test part only).** For $j = j_0, j_0+1, \dots, G'-1$ in order:
    compute $n_j = \#\{i \in T : s_i \ge \lambda_j\}$ and $k_j = \#\{i \in T : s_i \ge \lambda_j,\ d_i = 1\}$,
    then $p_j$ = `binom_pvalue_upper(k_j, n_j, alpha)` ($= 1$ if $n_j = 0$), and append
-   $(\lambda_j, n_j, k_j, p_j)$ to `trace`. If $p_j \le \delta$, set `lam` $= \lambda_j$ and
+   the tuple `(lam_j, n_j, k_j, p_j)` to `trace`, in the same format as `mode="same"`. If $p_j \le \delta$, set `lam` $= \lambda_j$ and
    continue. Otherwise **break**. **No skip rule.** In particular, do not skip a $j$ with
    $n_j < m_0$. Test it anyway. If $n_j < \lceil\log\delta/\log(1-\alpha)\rceil$, then
    $p_j \ge (1-\alpha)^{n_j} > \delta$, so the walk stops there, which is conservative.
-6. **Return.** `feasible = isfinite(lam)`. Serving is unchanged: serve $x$ iff $s(x) \ge$ `lam`.
+6. **Return.** Set `self.lam = lam`, `self.feasible = np.isfinite(lam)`, `self.trace = trace`,
+   and `return self`. Serving is unchanged: serve $x$ iff $s(x) \ge$ `lam`.
    The certified $\hat\lambda$ is one of the design-part grid values (or $+\infty$). The test
    points are used only in step 5. Implementations may also store $j_0$, $n_D$ and $n_T$ for
    diagnostics.
@@ -263,25 +272,34 @@ Taking expectations over $\mathcal D$ gives the theorem. $\square$
   a heavily quantised C, puts atoms in $s$. That broke (C) and the deterministic-count
   ladder of Theorem 1(b). Theorem 1′ never uses either. The grid only has to be
   $\mathcal D$-measurable. Duplicates are removed by `unique`, and the test counts $n_j$ can be
-  any random numbers because Step C conditions on them. One caveat: if one draws a bootstrap
-  resample and *then* splits it, the same original point can land in both $D$ and $T$, so
-  $D$ and $T$ are no longer independent. The guarantee then holds for the resampled
-  empirical law as the "population", not for the original $P$. To certify against the
-  original $P$, split first, or split a sample drawn without replacement.
+  any random numbers because Step C conditions on them.
+* *Bootstrap then split is covered exactly.* In population mode (Exp 6a), take $P$ to be the
+  pool's empirical law, which is also the law the violation rate is evaluated against.
+  Bootstrap draws are i.i.d. from it, so Assumption I holds and Theorem 1′ applies to
+  bootstrap-then-split as is. This includes copies of the same pool point that land in both
+  $D$ and $T$: under the pool law those are independent draws that happen to coincide. Do
+  **not** split the pool first and then bootstrap each part. $T$ would then be i.i.d. from a
+  sub-pool law rather than the whole-pool law that is evaluated, and the theorem would not
+  apply to the evaluated risk. Relative to the original, unknown $P$, bootstrap draws are
+  not i.i.d. in either mode. That limitation is not specific to the split.
 * *Multiplicity.* There is no correction. As in (F2), there is one level-$\delta$ test per
   realisation, at $j^\star$.
 * *Infeasible outcomes are safe.* `lam = inf` (from step 1, step 2, or $p_{j_0} > \delta$)
   serves nothing and is never an error.
 
-**Coverage cost (prediction, to be checked by Task 2).** The split procedure on $n$ points
-should match the same-data procedure on $n_T = (1-f)n = 0.7n$ points. The design part
-($0.3n$ points) only sets grid resolution and the start index, which costs almost nothing
-when $G \lesssim 0.3n$. So the coverage gap is about
-$\varphi_{\text{same}}(n) - \varphi_{\text{same}}(0.7n)$. Equivalently, the stopping rule needs
-an empirical-risk slack about $1/\sqrt{0.7} \approx 1.20$ times larger, roughly
-$z_{1-\delta}\sqrt{\alpha(1-\alpha)/(n_T\,\varphi)}$ against $\sqrt{n}$. So the gap is
-small, shrinks like $n^{-1/2}$, and the split also adds some run-to-run variance from the
-random partition.
+**Coverage cost (prediction, to be checked by Task 2).** With the $2m_0$ start margin, the
+split procedure on $n$ points should behave roughly like the same-data procedure on
+$n_T = (1-f)n = 0.7n$ points. The stopping rule's empirical-risk slack is about
+$z_{1-\delta}\sqrt{\alpha(1-\alpha)/(n_T\,\varphi)}$, which is $\propto 1/\sqrt{n_T}$ instead of
+$1/\sqrt{n}$, a ratio of $1/\sqrt{0.7} \approx 1.20$. So the main gap is about
+$\varphi_{\text{same}}(n) - \varphi_{\text{same}}(0.7n)$, and it shrinks like $n^{-1/2}$. Two
+smaller costs come on top of that. First, the start index skips the top of the grid where
+the rescaled count is below $2m_0$ (the same-data walk starts at $m_0$). Second, a fraction
+of runs ends infeasible when the random test count at $j_0$ or an early $p_j$ falls short. A
+reviewer simulation (monotone $\eta = 0.25(1-u)^2$, $n = 1000$) gave split coverage .625 with
+1.7 % of runs infeasible, against .647 for same-data, and violation rates .062 and .070, both
+below $\delta$. With a start margin of only $m_0$, the split reached just .355 with 43 % of
+runs infeasible. The random partition also adds some run-to-run variance.
 
 **Checked by:** `tests/test_certify.py::test_split_mode_validity_nonmonotone`, `results/exp9_split_certificate.csv`.
 
