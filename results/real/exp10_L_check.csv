@@ -1,0 +1,2 @@
+L_source,agree_hx,agree_dv,threshold,n_hx,tag,npz,ref,timing
+gpu,1.0,0.9996666666666667,0.995,3846,exp10,real_preds_ft.npz,real_preds.npz,not compared: different hardware

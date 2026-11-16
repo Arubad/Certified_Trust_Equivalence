@@ -12,7 +12,15 @@ consumes C's margin score and the disagreement bit 1[C(x) != L(x)].
   6c  real drift: certificate fitted on HateXplain, deployed on Davidson tweets;
       monitor false-alarm / detection / delay
   6d  streaming policy: 1 500 HateXplain posts then 3 000 Davidson tweets
+
+CLI (defaults reproduce Exp 6 exactly):
+  python exp6_real_models.py [--npz PATH] [--models a,b,c] [--tag TAG] [--ref PATH]
+  Exp 10: --npz results/real/real_preds_ft.npz --models distil6,p50ft,p70ft,q4ft --tag exp10
+  --ref is the CPU real_preds.npz used for the L check (Review Focus 4 / ruling R1). It
+  defaults to real_preds.npz next to --npz whenever --npz is not real_preds.npz itself.
+  Outputs are written to $TEC_REAL_OUT (default results/real) as TAG_* files.
 """
+import argparse
 import json
 import os
 import sys
@@ -30,6 +38,7 @@ OUT = os.environ.get("TEC_REAL_OUT", os.path.join(HERE, "..", "..", "results", "
 DELTA = 0.10
 COMPRESSED = ["int8", "q4", "q3", "p30", "p50", "p70"]
 MAIN_GROUPS = ["African", "Islam", "Jewish", "Homosexual", "Women"]
+AGREE_TOL = 0.995        # ruling R1: GPU prob_L is used when its HateXplain argmax agreement with CPU L >= this
 
 
 def first_group(g):
@@ -57,21 +66,40 @@ def population_eval(cert, s_pool, d_pool):
     return selective_risk(sm, d_pool), float(sm.mean())
 
 
-def overview(Z, meta):
+def check_L(Z, R, tol=AGREE_TOL):
+    """Ruling R1 / Review Focus 4. Z: the run whose prob_L is a candidate (GPU ft npz),
+    R: the CPU reference (real_preds.npz). Rows must be the same (y and split equal).
+    Returns (info, prob_L): prob_L is Z's when HateXplain argmax agreement >= tol, else R's."""
+    if not (np.array_equal(Z["y"], R["y"]) and np.array_equal(Z["split"], R["split"])):
+        raise ValueError("row order differs: y/split of the two npz files are not identical")
+    hx = np.isin(Z["split"], ["val", "test"])
+    dv = Z["split"] == "davidson"
+    ag = lambda m: float((Z["prob_L"][m].argmax(1) == R["prob_L"][m].argmax(1)).mean())  # noqa: E731
+    agree_hx = ag(hx)
+    use_gpu = agree_hx >= tol
+    info = {"L_source": "gpu" if use_gpu else "cpu", "agree_hx": agree_hx,
+            "agree_dv": ag(dv) if dv.any() else np.nan, "threshold": tol, "n_hx": int(hx.sum())}
+    return info, (Z["prob_L"] if use_gpu else R["prob_L"])
+
+
+def overview(Z, meta, models=COMPRESSED):
     """Per-model accuracy and agreement with L on HateXplain (hx) and Davidson (dv).
 
     acc_* uses labelled rows only (y >= 0); agree_* uses every row of the domain.
-    latency_rel is reported only for int8 (the one model with a real CPU speed-up);
-    fake-quant and pruned models run dense fp32, so their latency is NaN.
+    latency_rel is computed only when int8 is among `models` (the exp6 setting, where
+    every timing comes from one CPU run; int8 is the one model with a real CPU speed-up).
+    Otherwise (e.g. the T4 fp16 run in real_preds_ft.npz) it is NaN, so timings from
+    different hardware are never compared.
     """
     y, split = Z["y"], Z["split"]
     hx, dv = np.isin(split, ["val", "test"]), split == "davidson"
     predL = Z["prob_L"].argmax(1)
     lat_L = meta["L"]["per_1k"]
+    timed = "int8" in models
     ov = []
-    for c in ["L"] + [c for c in COMPRESSED if "prob_" + c in Z]:
+    for c in ["L"] + [c for c in models if "prob_" + c in Z]:
         p = Z["prob_" + c].argmax(1)
-        lat_rel = meta[c]["per_1k"] / lat_L if c in ("L", "int8") else np.nan
+        lat_rel = meta[c]["per_1k"] / lat_L if (timed and c in ("L", "int8")) else np.nan
         r = {"model": c, "size": meta[c]["size"], "latency_rel": lat_rel}
         for nm, m in [("hx", hx), ("dv", dv)]:
             lab = m & (y >= 0)
@@ -81,18 +109,88 @@ def overview(Z, meta):
     return pd.DataFrame(ov)
 
 
-def main():
+def plot_figure(sa, sc, models, path):
+    """Three-panel figure from the 6a and 6c summary tables (DataFrames or CSVs read back).
+    Returns False when matplotlib is not installed."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return False
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    ax = axes[0]
+    for c in models:
+        g = sa[(sa.model == c) & (sa.alpha == 0.05)]
+        for cert, ls in [("certified", "-"), ("naive", ":")]:
+            gg = g[g.certifier == cert]
+            ax.plot(gg.n_cal, gg.violation, ls, marker="o", label=f"{c} {cert}" if cert == "certified" else None)
+    ax.axhline(DELTA, color="k", ls="--", lw=0.8)
+    ax.set_xlabel("calibration size"); ax.set_ylabel("P(population risk > alpha)"); ax.set_title("6a validity (alpha=0.05; dotted = naive)")
+    ax.legend(fontsize=7)
+    ax = axes[1]
+    g = sa[(sa.certifier == "certified") & (sa.n_cal == 1000)]
+    for c in models:
+        gg = g[g.model == c]
+        ax.plot(gg.alpha, gg.cost_size, marker="o", label=c)
+    ax.set_xlabel("alpha"); ax.set_ylabel("certified cost (size)"); ax.set_title("6a certified cost, n_cal=1000"); ax.legend(fontsize=7)
+    ax = axes[2]
+    g = sc[sc.alpha == 0.05].pivot(index="model", columns="domain", values="risk").loc[models]
+    xx = np.arange(len(models))
+    ax.bar(xx - 0.2, g["hatexplain"], 0.4, label="HateXplain (calibration domain)")
+    ax.bar(xx + 0.2, g["davidson"], 0.4, label="Davidson (shifted)")
+    ax.axhline(0.05, color="k", ls="--", lw=0.8); ax.set_xticks(xx); ax.set_xticklabels(models)
+    ax.set_ylabel("selective disagreement risk"); ax.set_title("6c risk on calibration vs shifted domain"); ax.legend(fontsize=7)
+    fig.tight_layout(); fig.savefig(path, dpi=130)
+    return True
+
+
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(description="Exp 6 analysis (defaults reproduce Exp 6).")
+    p.add_argument("--npz", default=None, help="prediction npz (default: OUT/real_preds.npz)")
+    p.add_argument("--ref", default=None, help="CPU reference npz for the prob_L check (default: see module doc)")
+    p.add_argument("--models", default=",".join(COMPRESSED), help="comma list of compressed models")
+    p.add_argument("--tag", default="exp6", help="output file prefix (default exp6)")
+    a = p.parse_args(argv)
+    a.models = [m for m in a.models.split(",") if m]
+    return a
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    tag, models = args.tag, args.models
     os.makedirs(OUT, exist_ok=True)
-    Z = np.load(os.path.join(OUT, "real_preds.npz"), allow_pickle=False)
+    npz = args.npz or os.path.join(OUT, "real_preds.npz")
+    with np.load(npz, allow_pickle=False) as F:
+        Z = {k: F[k] for k in F.files}
     meta = json.loads(str(Z["meta"]))
+    for c in models:
+        if "prob_" + c not in Z:
+            raise SystemExit(f"model {c!r} has no prob_{c} in {npz}")
+
+    # ------------------------------------------------ prob_L check (ruling R1) --
+    ref = args.ref
+    if ref is None and os.path.basename(npz) != "real_preds.npz":
+        ref = os.path.join(os.path.dirname(npz), "real_preds.npz")
+    if ref is not None:
+        with np.load(ref, allow_pickle=False) as F:
+            R = {k: F[k] for k in ["y", "split", "prob_L"]}
+        info, Z["prob_L"] = check_L(Z, R)
+        info.update(tag=tag, npz=os.path.basename(npz), ref=os.path.basename(ref),
+                    timing=("same run" if "int8" in models else "not compared: different hardware"))
+        print(f"[L check] HateXplain argmax agreement GPU vs CPU = {info['agree_hx']:.4f} "
+              f"(davidson {info['agree_dv']:.4f}); threshold {AGREE_TOL}; using L = {info['L_source']}")
+        save(pd.DataFrame([info]), f"{tag}_L_check.csv")
+
     hx, dv = np.isin(Z["split"], ["val", "test"]), Z["split"] == "davidson"
     predL = Z["prob_L"].argmax(1)
-    S = {c: margin(Z["prob_" + c]) for c in COMPRESSED}
-    D = {c: (Z["prob_" + c].argmax(1) != predL).astype(int) for c in COMPRESSED}
+    S = {c: margin(Z["prob_" + c]) for c in models}
+    D = {c: (Z["prob_" + c].argmax(1) != predL).astype(int) for c in models}
+    timed = "int8" in models
     lat_L = meta["L"]["per_1k"]
 
     pd.set_option("display.width", 240)
-    ov = overview(Z, meta); save(ov, "exp6_overview.csv")
+    ov = overview(Z, meta, models=models); save(ov, f"{tag}_overview.csv")
     print(ov.round(3).to_string())
 
     # ---------------------------------------------------- 6a validity + cost --
@@ -101,7 +199,7 @@ def main():
     # eval="population": calibration draws are i.i.d. WITH replacement from the hx pool,
     # and risk/coverage are exact over the whole pool (the pool is the population).
     # This removes held-out test noise; the guarantee holds exactly for this setting.
-    for c in COMPRESSED:
+    for c in models:
         s, d = S[c][idx_hx], D[c][idx_hx]
         for alpha in [0.01, 0.02, 0.05]:
             for n_cal in [200, 500, 1000]:
@@ -122,12 +220,15 @@ def main():
     sa["size"] = sa.model.map(lambda c: meta[c]["size"])
     # cost_size / cost_latency: free-deferral assumption (a deferred input costs only L).
     sa["cost_size"] = certified_cost(sa.coverage, sa["size"])
-    lat = sa.model.map(lambda c: meta[c]["per_1k"] / lat_L if c in ("L", "int8") else np.nan)
-    sa["cost_latency"] = np.where(sa.model.isin(["L", "int8"]),
-                                  certified_cost(sa.coverage, lat), np.nan)
+    if timed:
+        lat = sa.model.map(lambda c: meta[c]["per_1k"] / lat_L if c in ("L", "int8") else np.nan)
+        sa["cost_latency"] = np.where(sa.model.isin(["L", "int8"]),
+                                      certified_cost(sa.coverage, lat), np.nan)
+    else:
+        sa["cost_latency"] = np.nan
     # cost_cascade: C always runs to produce its margin, then L on deferred inputs.
     sa["cost_cascade"] = sa["size"] + (1 - sa.coverage)
-    save(sa, "exp6a_summary.csv")
+    save(sa, f"{tag}a_summary.csv")
     print(sa[sa.n_cal == 1000].round(3).to_string())
 
     # --------------------------------------------------- 6b group certificate --
@@ -137,7 +238,7 @@ def main():
     GNAMES = MAIN_GROUPS + ["other"]
     rows = []
     alpha, n_cal = 0.05, 2000
-    for c in COMPRESSED:
+    for c in models:
         s, d, g = S[c][idx_hx], D[c][idx_hx], G[idx_hx]
         rng = np.random.default_rng(1)
         # eval="population": i.i.d. draws with replacement from the pool; group risks and
@@ -157,14 +258,14 @@ def main():
     sb = b.groupby(["model", "certificate", "group", "eval"]).agg(
         violation=("violation", "mean"), coverage=("coverage", "mean"), risk=("risk", "mean"),
         unc_dis=("unc_dis", "mean"), n_pool=("n_pool", "mean")).reset_index()
-    save(sb, "exp6b_summary.csv")
+    save(sb, f"{tag}b_summary.csv")
     print(sb.round(3).to_string())
 
     # ------------------------------------------------- 6c drift to Davidson --
     idx_dv = np.where(dv)[0]
     rows, mon_rows = [], []
     skipped_monitor_models = set()
-    for c in COMPRESSED:
+    for c in models:
         for alpha in [0.02, 0.05]:
             rng = np.random.default_rng(2)
             for r in range(50):
@@ -212,7 +313,7 @@ def main():
                                                       violation=("risk", lambda x: 0)).reset_index()
     sc["violation"] = [float((cd[(cd.model == m) & (cd.alpha == a_) & (cd.domain == dm)].risk > a_).mean())
                        for m, a_, dm in zip(sc.model, sc.alpha, sc.domain)]
-    save(sc, "exp6c_drift_risk.csv")
+    save(sc, f"{tag}c_drift_risk.csv")
     print(sc.round(3).to_string())
     mo = pd.DataFrame(mon_rows)
     # false alarm = any alarm on the null stream (3000 in-domain inputs)
@@ -221,7 +322,7 @@ def main():
         detect=("alarm_post", "mean"), early=("alarm_pre", "mean"), median_delay=("delay", "median"),
         post_risk=("post_risk", "mean"))
     sm_ = det.join(fa.rename("false_alarm")).reset_index()
-    save(sm_, "exp6c_monitors.csv")
+    save(sm_, f"{tag}c_monitors.csv")
     print(sm_.round(3).to_string())
     print("[6c] monitor rows skipped for degenerate certificates:", sorted(skipped_monitor_models))
 
@@ -260,7 +361,7 @@ def main():
 
     rows = []
     alpha = 0.05
-    for c in COMPRESSED:
+    for c in models:
         for r in range(20):
             rng = np.random.default_rng(100 + r)
             perm = rng.permutation(idx_hx); ca, te = perm[:1000], perm[1000:]
@@ -274,40 +375,14 @@ def main():
                 rows.append({"model": c, "run": r, **o})
     e = pd.DataFrame(rows)
     se = e.groupby(["model", "policy"]).mean(numeric_only=True).drop(columns="run").reset_index()
-    save(se, "exp6d_streaming.csv")
+    save(se, f"{tag}d_streaming.csv")
     print(se.round(3).to_string())
 
     # ------------------------------------------------------------------ plots --
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("matplotlib not installed; skipping figure"); sys.exit(0)
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-    ax = axes[0]
-    for c in COMPRESSED:
-        g = sa[(sa.model == c) & (sa.alpha == 0.05)]
-        for cert, ls in [("certified", "-"), ("naive", ":")]:
-            gg = g[g.certifier == cert]
-            ax.plot(gg.n_cal, gg.violation, ls, marker="o", label=f"{c} {cert}" if cert == "certified" else None)
-    ax.axhline(DELTA, color="k", ls="--", lw=0.8)
-    ax.set_xlabel("calibration size"); ax.set_ylabel("P(population risk > alpha)"); ax.set_title("6a validity (alpha=0.05; dotted = naive)")
-    ax.legend(fontsize=7)
-    ax = axes[1]
-    g = sa[(sa.certifier == "certified") & (sa.n_cal == 1000)]
-    for c in COMPRESSED:
-        gg = g[g.model == c]
-        ax.plot(gg.alpha, gg.cost_size, marker="o", label=c)
-    ax.set_xlabel("alpha"); ax.set_ylabel("certified cost (size)"); ax.set_title("6a certified cost, n_cal=1000"); ax.legend(fontsize=7)
-    ax = axes[2]
-    g = sc[sc.alpha == 0.05].pivot(index="model", columns="domain", values="risk").loc[COMPRESSED]
-    xx = np.arange(len(COMPRESSED))
-    ax.bar(xx - 0.2, g["hatexplain"], 0.4, label="HateXplain (calibration domain)")
-    ax.bar(xx + 0.2, g["davidson"], 0.4, label="Davidson (shifted)")
-    ax.axhline(0.05, color="k", ls="--", lw=0.8); ax.set_xticks(xx); ax.set_xticklabels(COMPRESSED)
-    ax.set_ylabel("selective disagreement risk"); ax.set_title("6c risk on calibration vs shifted domain"); ax.legend(fontsize=7)
-    fig.tight_layout(); fig.savefig(os.path.join(OUT, "exp6_real_models.png"), dpi=130)
+    if plot_figure(sa, sc, models, os.path.join(OUT, f"{tag}_real_models.png")):
+        print("[saved]", os.path.relpath(os.path.join(OUT, f"{tag}_real_models.png")))
+    else:
+        print("matplotlib not installed; skipping figure")
     print("done")
 
 
