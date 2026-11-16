@@ -75,7 +75,9 @@ class OnDevice(nn.Module):
     def forward(self, **kw):
         kw = {k: v.to(self.dev) for k, v in kw.items()}
         with torch.autocast(self.dev.type, dtype=torch.float16, enabled=self.amp):
-            return self.m(**kw)
+            out = self.m(**kw)
+        # colab_infer.predict calls .numpy() on the logits, which fails for CUDA tensors
+        return SimpleNamespace(logits=out.logits.float().cpu())
 
 
 class STEQuant(nn.Module):
@@ -154,6 +156,7 @@ def fit(model, tok, texts, targets, epochs, lr, dev, amp, *, kd_teacher=None,
 def run_model(name, c):
     """Train (if needed) and evaluate one model. Returns (eval probs in common order, meta)."""
     t_tr = time.time()
+    extra = {}
     if name == "L":
         model, tok, perm, size = c.L, c.tok, c.perm, ci.rel_size(c.L, "fp32", None)
         train_secs = 0.0
@@ -184,6 +187,11 @@ def run_model(name, c):
         fit(model, tok, c.tr_texts, c.tr_native, EPOCHS[name], LR[name], c.dev, c.amp,
             after_step=apply_masks, max_steps=c.max_steps)
         train_secs = time.time() - t_tr
+        nnz = sum(int((l.weight != 0).sum()) for l in lins)
+        tot = sum(l.weight.numel() for l in lins)
+        extra["sparsity"] = float(1 - nnz / tot)
+        print(f"    sparsity over encoder Linears: {extra['sparsity']:.4f} "
+              f"(target {frac})", flush=True)
     elif name == "q4ft":
         model = copy.deepcopy(c.L)
         lins = ci.encoder_linears(model)
@@ -203,7 +211,8 @@ def run_model(name, c):
     if c.dev.type == "cuda":
         torch.cuda.empty_cache()
     meta = dict(size=float(size), train_secs=float(train_secs), infer_secs=float(infer_secs),
-                secs=float(infer_secs), per_1k=float(1000 * infer_secs / len(c.eval_texts)))
+                secs=float(infer_secs), per_1k=float(1000 * infer_secs / len(c.eval_texts)),
+                train_eval_dup_texts=int(c.n_dup), **extra)
     return P, meta
 
 
@@ -211,10 +220,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--smoke", action="store_true", help="64 train posts, 5 steps, 64 eval rows")
     ap.add_argument("--only", default=None, help="comma list from: " + ",".join(ALL))
-    ap.add_argument("--out", default="real_preds_ft.npz")
+    ap.add_argument("--out", default=None,
+                    help="default real_preds_ft.npz (smoke_preds_ft.npz with --smoke)")
     ap.add_argument("--ref", default=None,
-                    help="reference npz (results/real/real_preds.npz); y/split/groups must match")
+                    help="reference npz (results/real/real_preds.npz); y/split/groups must match "
+                         "(required unless --smoke)")
     args = ap.parse_args()
+    if args.out is None:
+        args.out = "smoke_preds_ft.npz" if args.smoke else "real_preds_ft.npz"
+    must(args.smoke or args.ref,
+         "--ref is required for the real run (ruling R1: eval rows must match real_preds.npz)")
     torch.manual_seed(0)
     np.random.seed(0)
 
@@ -263,6 +278,11 @@ def main():
         max_steps = SMOKE_STEPS
     else:
         eval_df, max_steps = df, None
+    eval_texts_set = set(eval_df.text.tolist())
+    dup_texts = {t for t, _, _ in tr} & eval_texts_set   # exact-string overlap, reported only
+    n_dup = len(dup_texts)
+    print(f"exact duplicate texts train vs eval rows: {n_dup} distinct "
+          f"({sum(t in dup_texts for t, _, _ in tr)} train posts)", flush=True)
     eval_y = eval_df.y.values
     eval_split = eval_df.split.values.astype(str)
     eval_groups = eval_df.groups.values.astype(str)
@@ -278,7 +298,7 @@ def main():
         L=L, tok=tok, perm=perm, dev=dev, amp=amp, max_steps=max_steps,
         tr_texts=[t for t, _, _ in tr], tr_y=tr_y,
         tr_native=np.asarray(perm)[tr_y],          # L's head index for each common label
-        eval_texts=eval_df.text.tolist(),
+        eval_texts=eval_df.text.tolist(), n_dup=n_dup,
     )
 
     # ---- result container (merge with existing file when --only) ------------------
