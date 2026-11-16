@@ -84,13 +84,19 @@ class SelectiveCertificate:
                 be considered (avoids vacuous tiny subsets)
     """
 
-    def __init__(self, alpha=0.05, delta=0.1, n_grid=200, min_accept=20):
+    def __init__(self, alpha=0.05, delta=0.1, n_grid=200, min_accept=20,
+                 mode="same", design_frac=0.3, seed=0):
+        if mode not in ("same", "split"):
+            raise ValueError(f"mode must be 'same' or 'split', got {mode!r}")
         self.alpha, self.delta, self.n_grid = alpha, delta, n_grid
         # the fixed sequence must start at a subset large enough that H0 can
         # be rejected even with zero observed disagreements:
         # (1-alpha)^n <= delta  <=>  n >= log(delta)/log(1-alpha)
         n_min_reject = int(np.ceil(np.log(delta) / np.log(1 - alpha)))
         self.min_accept = max(min_accept, n_min_reject)
+        # mode="same": data-dependent grid and skip rule on the full calibration set.
+        # mode="split": Theorem 1' (theory.md 1.4), grid and start index from a design split.
+        self.mode, self.design_frac, self.seed = mode, design_frac, seed
         self.lam = np.inf          # inf -> serve nothing (always defer)
         self.feasible = False
         self.trace = []
@@ -98,6 +104,8 @@ class SelectiveCertificate:
     def fit(self, s_cal, dis_cal):
         """s_cal: scores on calibration inputs; dis_cal: 1 if C != L."""
         s_cal = np.asarray(s_cal); dis_cal = np.asarray(dis_cal).astype(int)
+        if self.mode == "split":
+            return self._fit_split(s_cal, dis_cal)
         grid = np.unique(np.quantile(s_cal, np.linspace(0, 1, self.n_grid)))[::-1]  # high -> low
         self.trace = []
         chosen = np.inf
@@ -114,6 +122,37 @@ class SelectiveCertificate:
                 break                 # fixed-sequence: stop at first non-rejection
         self.lam = chosen
         self.feasible = np.isfinite(chosen)
+        return self
+
+    def _fit_split(self, s, d):
+        """Theorem 1' (theory.md section 1.4), steps 0-6."""
+        m0 = self.min_accept
+        n = len(s)
+        self.lam, self.feasible, self.trace = np.inf, False, []      # step 0
+        if n < 2 * m0:                                                 # step 1
+            return self
+        perm = np.random.default_rng(self.seed).permutation(n)         # step 2
+        n_D = int(np.floor(self.design_frac * n)); n_T = n - n_D
+        if n_D < 1 or n_T < m0:
+            return self
+        D, T = perm[:n_D], perm[n_D:]
+        grid = np.unique(np.quantile(s[D], np.linspace(0, 1, self.n_grid)))[::-1]  # step 3
+        Gp = len(grid)
+        a = n_D - np.searchsorted(np.sort(s[D]), grid, side="left")    # a_j = #{i in D: s_i >= lam_j}
+        ok = np.nonzero(a * n_T >= 2 * m0 * n_D)[0]                    # step 4 (integer form)
+        j0 = int(ok[0]) if len(ok) else Gp - 1
+        sT, dT = s[T], d[T]
+        for j in range(j0, Gp):                                        # step 5: no skip rule
+            lam = grid[j]
+            acc = sT >= lam
+            nj, kj = int(acc.sum()), int(dT[acc].sum())
+            p = binom_pvalue_upper(kj, nj, self.alpha)
+            self.trace.append((lam, nj, kj, p))
+            if p <= self.delta:
+                self.lam = lam
+            else:
+                break
+        self.feasible = bool(np.isfinite(self.lam))                    # step 6
         return self
 
     def serve_mask(self, s):

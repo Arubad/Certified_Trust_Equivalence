@@ -32,6 +32,14 @@ COMPRESSED = ["int8", "q4", "q3", "p30", "p50", "p70"]
 MAIN_GROUPS = ["African", "Islam", "Jewish", "Homosexual", "Women"]
 
 
+def first_group(g):
+    """Index of the first main target group named in a '|'-separated groups string; len(MAIN_GROUPS) = other."""
+    for t in MAIN_GROUPS:
+        if t in g.split("|"):
+            return MAIN_GROUPS.index(t)
+    return len(MAIN_GROUPS)                     # "other / none"
+
+
 def save(df, name):
     df.to_csv(os.path.join(OUT, name), index=False)
     print("[saved]", os.path.relpath(os.path.join(OUT, name)))
@@ -124,13 +132,6 @@ def main():
 
     # --------------------------------------------------- 6b group certificate --
     gstr = Z["groups"]
-
-    def first_group(g):
-        for t in MAIN_GROUPS:
-            if t in g.split("|"):
-                return MAIN_GROUPS.index(t)
-        return len(MAIN_GROUPS)                     # "other / none"
-
 
     G = np.array([first_group(g) for g in gstr])
     GNAMES = MAIN_GROUPS + ["other"]
