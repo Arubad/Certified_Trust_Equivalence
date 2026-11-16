@@ -2,7 +2,7 @@
 
 This note states and proves the guarantees behind `tec/certify.py` and `tec/monitor.py`.
 Notation follows REPORT.md §3. Four results are numbered: Theorem 1 (selective
-certificate), Proposition 2 (audit-martingale delay), Corollary 3 (group certificates) and
+certificate, with the assumption-free split variant Theorem 1′ in §1.4), Proposition 2 (audit-martingale delay), Corollary 3 (group certificates) and
 Proposition 4 (predictable adaptive auditing). Each one ends with a **Checked by** line
 that names the test or experiment that checks it numerically.
 
@@ -158,10 +158,132 @@ quantised C), (C) fails, the counts stop being deterministic, and only part (a) 
   is at least $2m_0$. Then do not skip: a test with $n(\lambda_{j_0}) < m_0$ simply fails
   and returns $+\infty$, which is conservative.
 
-This is Theorem 1(a) verbatim. It costs a little power (split) or resolution (lattice).
+This is Theorem 1(a) verbatim. It costs a little power (split) or resolution (lattice). §1.4 (Theorem 1′) states the split version as an exact algorithm and proves it.
 
 **Checked by:** `tests/test_certify.py::test_certificate_validity_synthetic`, and the empirical violation
 rate $\le \delta$ in `results/real/exp6a_summary.csv`.
+
+### 1.4 Theorem 1′ (split-grid certificate, unconditional)
+
+This section turns the recommendation above into a procedure and proves it valid with no
+continuity (C) or monotonicity (M) assumption. The idea is to choose the grid and the start
+index from one part of the calibration set and to test on the other part. Once the design
+part is fixed, the hypotheses and their order are fixed, so Theorem 1(a) applies directly.
+
+**Procedure (`SelectiveCertificate(..., mode="split", design_frac=0.3, seed=0).fit(s, d)`).**
+Inputs: scores $s_1,\dots,s_n$ and disagreements $d_1,\dots,d_n$, and $\alpha$, $\delta$,
+$G$ (`n_grid`), $f$ (`design_frac`, with $0 < f < 1$), `seed`, and
+$m_0 = \max(\texttt{min\_accept}, \lceil \log\delta/\log(1-\alpha)\rceil)$, the same `self.min_accept`
+as in `__init__`. Indices are 0-based, as in the code.
+
+0. **Initialise.** Set `lam = inf`, `feasible = False`, `trace = []`.
+1. **Size check.** If $n < 2m_0$, return now (infeasible, `lam = inf`).
+2. **Split.** Let `perm = np.random.default_rng(seed).permutation(n)`, $n_D = \lfloor f n \rfloor$
+   (`int(np.floor(design_frac * n))`) and $n_T = n - n_D$. The design part is
+   $D$ = `perm[:n_D]` and the test part is $T$ = `perm[n_D:]`. If $n_D < 1$ or $n_T < m_0$,
+   return now (infeasible). With $f = 0.3$ and $n \ge 2m_0$ this cannot happen, because
+   $n_T \ge 0.7n \ge 1.4m_0$. The permutation depends only on `seed` and $n$, never on the data.
+3. **Grid (design part only).** Set
+   `grid = np.unique(np.quantile(s[D], np.linspace(0, 1, G)))[::-1]`. Its values
+   $\lambda_0 > \lambda_1 > \dots > \lambda_{G'-1}$ are strictly decreasing and distinct, with
+   $G' \le G$. Ties in $s[D]$ only merge grid points. The last value is $\min s[D]$.
+4. **Start index (design part only).** For each $j$, let $a_j = \#\{i \in D : s_i \ge \lambda_j\}$.
+   Let $j_0$ be the smallest $j$ with $a_j \cdot n_T \ge m_0 \cdot n_D$, which says that the
+   design count rescaled to the test size, $a_j n_T / n_D$, is at least $m_0$. Use integer
+   arithmetic for this comparison. Such a $j$ always exists, because the last grid value has
+   $a_{G'-1} = n_D$, so the rescaled count is $n_T \ge m_0$ after step 2.
+5. **Fixed-sequence test (test part only).** For $j = j_0, j_0+1, \dots, G'-1$ in order:
+   compute $n_j = \#\{i \in T : s_i \ge \lambda_j\}$ and $k_j = \#\{i \in T : s_i \ge \lambda_j,\ d_i = 1\}$,
+   then $p_j$ = `binom_pvalue_upper(k_j, n_j, alpha)` ($= 1$ if $n_j = 0$), and append
+   $(\lambda_j, n_j, k_j, p_j)$ to `trace`. If $p_j \le \delta$, set `lam` $= \lambda_j$ and
+   continue. Otherwise **break**. **No skip rule.** In particular, do not skip a $j$ with
+   $n_j < m_0$. Test it anyway. If $n_j < \lceil\log\delta/\log(1-\alpha)\rceil$, then
+   $p_j \ge (1-\alpha)^{n_j} > \delta$, so the walk stops there, which is conservative.
+6. **Return.** `feasible = isfinite(lam)`. Serving is unchanged: serve $x$ iff $s(x) \ge$ `lam`.
+   The certified $\hat\lambda$ is one of the design-part grid values (or $+\infty$). The test
+   points are used only in step 5. Implementations may also store $j_0$, $n_D$ and $n_T$ for
+   diagnostics.
+
+**Theorem 1′.** Assume I. Let `perm` be independent of the sample (it is a fixed function of
+`seed` and $n$). For every joint law $P$ of $(s, d)$, the procedure above satisfies
+
+$$P\big(R(\hat\lambda) \le \alpha\big) \ge 1 - \delta,$$
+
+where $R(+\infty) := 0$ and the probability is over the calibration sample. There is no
+continuity, monotonicity, single-crossing or no-ties assumption.
+
+*Proof.* If the procedure returns in step 1 or step 2, then $\hat\lambda = +\infty$ and
+$R(\hat\lambda) = 0 \le \alpha$ surely. Whether it returns there depends only on $n$, $f$
+and $m_0$, so assume from now on that it reaches step 3.
+
+*Step A: the test part is a fresh i.i.d. sample given the design part.* `perm` is a fixed
+bijection that does not depend on the data, and the pairs $(s_i, d_i)$ are i.i.d. So the
+families $(s_i, d_i)_{i \in D}$ and $(s_i, d_i)_{i \in T}$ are independent, and each is i.i.d.
+from $P$. Let $\mathcal D = \sigma\big((s_i, d_i)_{i \in D}\big)$. Conditional on $\mathcal D$, the
+$n_T$ test pairs are still i.i.d. from $P$.
+
+*Step B: the hypotheses and their order are $\mathcal D$-measurable.* The grid
+$(\lambda_j)_{j < G'}$ (step 3) and $j_0$ (step 4) are deterministic functions of $s[D]$, $n$,
+$G$, $f$ and $m_0$. So given $\mathcal D$, the ordered list of hypotheses
+$H_0(\lambda_{j_0}), H_0(\lambda_{j_0+1}), \dots, H_0(\lambda_{G'-1})$ is fixed. So is the set of
+true nulls $\mathcal N = \{j \ge j_0 : R(\lambda_j) > \alpha\}$, because $R$ is a fixed function of $P$.
+If $\varphi(\lambda_j) = 0$, then $R(\lambda_j)$ is undefined. Such a $j$ cannot be rejected,
+because $n_j = 0$ a.s. and so $p_j = 1$, so it can be ignored. $\mathcal N$ may be any subset.
+Without (M), true and false nulls may interleave in any pattern.
+
+*Step C: each test is valid given $\mathcal D$.* Fix $j \in \mathcal N$. Given $\mathcal D$, let
+$A_j = \{i \in T : s_i \ge \lambda_j\}$. Membership of $i$ depends only on $s_i$ and on the
+fixed number $\lambda_j$. So conditional on $\mathcal D$ and on $A_j$, the $d_i$ for $i \in A_j$
+are i.i.d. $\mathrm{Bern}(R(\lambda_j))$. This holds whether or not $s$ has atoms, because
+$R(\lambda_j) = P(d = 1 \mid s \ge \lambda_j)$ uses the same $\ge$ as the acceptance rule.
+Hence $k_j \mid (\mathcal D, n_j) \sim \mathrm{Bin}(n_j, R(\lambda_j))$ with $R(\lambda_j) > \alpha$,
+and (F1) gives $P(p_j \le \delta \mid \mathcal D, n_j) \le \delta$. Integrating over $n_j$ gives
+$P(p_j \le \delta \mid \mathcal D) \le \delta$.
+
+*Step D: fixed sequence with no skipping.* An error, $R(\hat\lambda) > \alpha$, requires
+$\hat\lambda = \lambda_j$ for some $j \in \mathcal N$, since $R(+\infty) = 0$. Step 5 walks
+$j_0, j_0+1, \dots$ with no skip and stops at the first non-rejection. So $\hat\lambda = \lambda_j$
+means that every index in $\{j_0, \dots, j\}$ was rejected. In particular the first true null
+$j^\star = \min \mathcal N$ was rejected, and $j^\star$ is $\mathcal D$-measurable. This is (F2).
+Its order is data-independent because we condition on $\mathcal D$, and nothing on $T$ can
+remove an index from the sequence. If $\mathcal N = \emptyset$, the conditional error
+probability is $0$. Otherwise
+
+$$P\big(R(\hat\lambda) > \alpha \mid \mathcal D\big) \le P\big(p_{j^\star} \le \delta \mid \mathcal D\big) \le \delta.$$
+
+Taking expectations over $\mathcal D$ gives the theorem. $\square$
+
+**Remarks.**
+
+* *Why the same-data argument needed (M) and this one does not.* In Theorem 1(b), "which
+  index is the first true null" depended on the tested scores. Here it depends only on
+  $\mathcal D$. The skip rule was the other leak, because activity depended on the tested
+  $n(\lambda_j)$. It is replaced by $j_0$, which is computed on $D$.
+* *Ties, including bootstrap ties, are now harmless.* Exp 6a-style bootstrap resampling, or
+  a heavily quantised C, puts atoms in $s$. That broke (C) and the deterministic-count
+  ladder of Theorem 1(b). Theorem 1′ never uses either. The grid only has to be
+  $\mathcal D$-measurable. Duplicates are removed by `unique`, and the test counts $n_j$ can be
+  any random numbers because Step C conditions on them. One caveat: if one draws a bootstrap
+  resample and *then* splits it, the same original point can land in both $D$ and $T$, so
+  $D$ and $T$ are no longer independent. The guarantee then holds for the resampled
+  empirical law as the "population", not for the original $P$. To certify against the
+  original $P$, split first, or split a sample drawn without replacement.
+* *Multiplicity.* There is no correction. As in (F2), there is one level-$\delta$ test per
+  realisation, at $j^\star$.
+* *Infeasible outcomes are safe.* `lam = inf` (from step 1, step 2, or $p_{j_0} > \delta$)
+  serves nothing and is never an error.
+
+**Coverage cost (prediction, to be checked by Task 2).** The split procedure on $n$ points
+should match the same-data procedure on $n_T = (1-f)n = 0.7n$ points. The design part
+($0.3n$ points) only sets grid resolution and the start index, which costs almost nothing
+when $G \lesssim 0.3n$. So the coverage gap is about
+$\varphi_{\text{same}}(n) - \varphi_{\text{same}}(0.7n)$. Equivalently, the stopping rule needs
+an empirical-risk slack about $1/\sqrt{0.7} \approx 1.20$ times larger, roughly
+$z_{1-\delta}\sqrt{\alpha(1-\alpha)/(n_T\,\varphi)}$ against $\sqrt{n}$. So the gap is
+small, shrinks like $n^{-1/2}$, and the split also adds some run-to-run variance from the
+random partition.
+
+**Checked by:** `tests/test_certify.py::test_split_mode_validity_nonmonotone`, `results/exp9_split_certificate.csv`.
 
 ## 2. Proposition 2 (audit-martingale detection delay)
 
